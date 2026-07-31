@@ -16,7 +16,7 @@ estructura.
 **Fase 0 — Diseño Estratégico.** No se implementa software. La fase cierra cuando todos
 los documentos de este índice están en estado `aprobado`.
 
-Documentos aprobados: 0 de 15.
+Documentos aprobados: 0 de 17.
 
 ## Índice
 

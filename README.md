@@ -61,3 +61,6 @@ una vez aprobados: se superan con un ADR nuevo que los referencia.
 `propuesto` → `aprobado` → `superado por ADR-NNN`
 
 Un ADR rechazado se conserva con estado `rechazado`. No se borra.
+
+Un ADR en estado `propuesto` se edita libremente. La inmutabilidad rige desde que pasa
+a `aprobado`: a partir de ahí solo se supera con un ADR posterior.

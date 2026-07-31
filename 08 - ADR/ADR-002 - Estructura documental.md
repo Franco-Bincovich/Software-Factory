@@ -84,9 +84,12 @@ los referencian por identificador.
 
 ## Justificación
 
-Un índice de dieciocho entradas con once rotas es peor que uno de quince completo. Los
-documentos que se crean por anticipación no se escriben y degradan la confianza en el
-índice.
+El índice anterior tenía dieciocho documentos y once de ellos no existían. El conjunto
+nuevo tiene diecisiete: se absorbieron cinco —KPIs, Quality, Risks, Future Versions y
+Human in the Loop— y se agregaron tres —Autonomy and HITL, Verification y Standards. La
+reducción neta es menor y no es el punto: el objetivo no fue tener menos documentos sino
+que ninguno quede huérfano y que cada uno tenga un ADR que lo sustente. Los documentos
+creados por anticipación no se escriben y degradan la confianza en el índice.
 
 La fusión de autonomía y HITL en un solo documento responde a una contradicción
 concreta del vault anterior: se los trataba como temas separados y por eso convivían un
