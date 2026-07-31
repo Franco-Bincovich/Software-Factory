@@ -429,3 +429,18 @@ fabf201  fix: resolver colision de README y precisar regla de frontmatter
 a2a8f16  feat: indice del Master Plan navegable
 7444822  feat: ADR-003 contrato de agente
 ```
+
+---
+
+## Cierre 2026-07-31
+
+Estado final tras la reescritura de historial. Lo escrito arriba refleja el estado al
+momento de cada pasada y no se corrige.
+
+- Discrepancia de conteo: corregida. El índice tiene 17 documentos. Project Master Plan
+  y ADR-002 actualizados; ADR-002 se editó por estar en estado 'propuesto'.
+- Doble autoría del historial: resuelta. Identidad unificada en los ocho commits.
+- Los SHAs citados en las secciones anteriores de este reporte corresponden al historial
+  previo a la reescritura y ya no existen. Se conservan como registro de lo que se hizo,
+  no como referencia navegable.
+- Bundle pre-reescritura: descartado deliberadamente. La reescritura no alteró contenido.

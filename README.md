@@ -56,6 +56,10 @@ Un documento en estado `borrador` no puede ser citado como fundamento de otra de
 **ADRs.** Numeración correlativa de tres dígitos desde `ADR-000`. Nunca se editan
 una vez aprobados: se superan con un ADR nuevo que los referencia.
 
+**Evidencia append-only.** Los reportes y el material de 99 - Archive no se corrigen
+retroactivamente. Un dato que quedó desactualizado se cierra con una sección nueva,
+nunca editando la anterior.
+
 ## Estados de un ADR
 
 `propuesto` → `aprobado` → `superado por ADR-NNN`
