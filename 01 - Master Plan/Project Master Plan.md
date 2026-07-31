@@ -44,7 +44,7 @@ Documentos aprobados: 0 de 17.
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
 | [[Agent Framework]] | pendiente | ADR pendiente: contrato de agente |
-| [[Autonomy and HITL]] | pendiente | ADR pendiente: modelo de control |
+| [[Autonomy and HITL]] | pendiente | [[ADR-004]] |
 | [[Verification]] | pendiente | ADR pendiente: capa de verificación |
 
 ### 04 - Knowledge Management
@@ -75,7 +75,7 @@ Riesgos vivos del proyecto. Se actualiza al cerrar cada ADR.
 |---|---|---|---|
 | R1 | Verificación producida por el mismo tipo de sistema que produce el código: la autonomía se vuelve confianza ciega. | Alto | Abierto — mitigación en ADR de verificación |
 | R2 | Costo de ejecución sin techo por agente ni por proyecto. | Alto | Abierto — sin ADR asignado |
-| R3 | El CEO como único aprobador de todos los Gates lo convierte en cuello de botella por diseño. | Alto | Abierto — mitigación en ADR de control |
+| R3 | El CEO como único aprobador de todos los Gates lo convierte en cuello de botella por diseño. | Alto | Mitigado parcialmente — ADR-004. Persiste mientras exista un solo rol humano aprobador. |
 | R4 | Alcance abierto ("cualquier tipo de sistema") sin primer corte funcional. | Alto | Abierto — mitigación en ADR de primer corte |
 | R5 | Bootstrapping: la plataforma construida por sus propios agentes genera dependencia circular. | Medio | Abierto |
 | R6 | Agent Factory priorizada antes de operar los Core Agents de punta a punta. | Medio | Abierto |
@@ -85,8 +85,8 @@ Riesgos vivos del proyecto. Se actualiza al cerrar cada ADR.
 
 Orden en que deben cerrarse los ADRs pendientes. No se altera sin ADR.
 
-1. Contrato de agente
-2. Modelo de control: autonomía y Gates
+1. Contrato de agente — cerrado por ADR-003
+2. Modelo de control: autonomía y Gates — cerrado por ADR-004
 3. Capa de verificación y Acceptance Criteria
 4. Planos de conocimiento
 5. Modelo de capas de la arquitectura

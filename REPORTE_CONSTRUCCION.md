@@ -444,3 +444,74 @@ momento de cada pasada y no se corrige.
   previo a la reescritura y ya no existen. Se conservan como registro de lo que se hizo,
   no como referencia navegable.
 - Bundle pre-reescritura: descartado deliberadamente. La reescritura no alteró contenido.
+
+---
+
+## ADR-004 2026-07-31
+
+Incorporación de ADR-004 y actualización del Master Plan. Append-only según la
+convención de evidencia del README.
+
+### Qué se creó
+
+`08 - ADR/ADR-004 - Modelo de control.md`, transcripto literal: 203 líneas, 17
+secciones, los 6 criterios del piso obligatorio. Frontmatter completo con
+`adr: [ADR-000, ADR-001, ADR-003]` y `aliases: [ADR-004]` tal como venía dictado.
+
+### Qué se actualizó
+
+**`00 - Home/Home.md`.** `[[ADR-004]]` agregado al final de la lista de decisiones.
+
+**`01 - Master Plan/Project Master Plan.md`**, tres cambios:
+
+| Ubicación | Antes | Después |
+|---|---|---|
+| Tabla `03 - Agent Framework`, fila `Autonomy and HITL` | `ADR pendiente: modelo de control` | `[[ADR-004]]` |
+| Registro de riesgos, R3 | `Abierto — mitigación en ADR de control` | `Mitigado parcialmente — ADR-004. Persiste mientras exista un solo rol humano aprobador.` |
+| Secuencia de decisión, puntos 1 y 2 | sin marca | `— cerrado por ADR-003` y `— cerrado por ADR-004` |
+
+### Validación de enlaces
+
+| Medición | Resultado |
+|---|---|
+| Archivos `.md` en el vault | 22 |
+| Nombres de archivo duplicados | 0 |
+| Alias duplicados | 0 |
+| Wikilinks que resuelven | 10 |
+| Wikilinks ambiguos | **0** |
+| Wikilinks no resueltos | 16 |
+
+Los dos enlaces nuevos resuelven: `[[ADR-004]]` desde `Home.md` y desde el índice del
+Master Plan, ambos a `08 - ADR/ADR-004 - Modelo de control.md`. Los cinco alias
+—`ADR-000` a `ADR-004`— resuelven sin colisión.
+
+Los 16 no resueltos son los mismos documentos pendientes del índice, sin cambios
+respecto de la pasada anterior. Siguen siendo intencionales.
+
+### Decisión de formato tomada por cuenta propia
+
+**Cómo marcar «cerrados» los puntos 1 y 2 de la Secuencia de decisión.** El prompt pedía
+marcarlos pero no fijaba notación. Usé el sufijo `— cerrado por ADR-NNN`, que replica el
+estilo de anotación con raya que el propio documento ya usa en el registro de riesgos.
+Es la única elección de forma de esta pasada. Si preferís tachado, negrita o una columna
+de estado, se cambia.
+
+### Observaciones, sin cambios aplicados
+
+**La fila `Agent Framework` quedó desactualizada.** Sigue diciendo `ADR pendiente:
+contrato de agente`, pero ese ADR ya existe: es ADR-003. Es la misma situación que la
+fila `Autonomy and HITL` tenía antes de esta pasada. No estaba en el alcance del prompt.
+
+**El estilo de la columna ADR quedó mezclado.** `Autonomy and HITL` ahora referencia
+`[[ADR-004]]` como wikilink, mientras `Project Master Plan` y `Decision Making` siguen
+con `ADR-002` y `ADR-000` en texto plano. Se aplicó lo indicado de forma literal. Los
+tres son ADRs existentes, así que los tres podrían ser wikilink.
+
+### Commits de esta pasada
+
+```
+63b8138  feat: ADR-004 modelo de control
+```
+
+El segundo commit de la pasada, `docs: actualizar indice y registro de riesgos`,
+incluye también esta sección del reporte.
