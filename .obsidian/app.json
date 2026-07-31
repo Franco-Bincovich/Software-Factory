@@ -1,3 +1,9 @@
 {
-  "promptDelete": false
+  "promptDelete": false,
+  "attachmentFolderPath": "09 - Templates/attachments",
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "userIgnoreFilters": [
+    "99 - Archive/"
+  ]
 }
