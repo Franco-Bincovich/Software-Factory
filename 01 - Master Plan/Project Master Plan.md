@@ -24,13 +24,13 @@ Documentos aprobados: 0 de 17.
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Project Master Plan]] | en-revisión | ADR-002 |
+| [[Project Master Plan]] | en-revisión | [[ADR-002]] |
 | [[Vision]] | pendiente | — |
 | [[Objectives]] | pendiente | — |
 | [[Scope]] | pendiente | ADR pendiente: primer corte funcional |
 | [[Principles]] | pendiente | — |
 | [[Roadmap]] | pendiente | ADR pendiente: secuencia de fases |
-| [[Decision Making]] | pendiente | ADR-000 |
+| [[Decision Making]] | pendiente | [[ADR-000]] |
 
 ### 02 - Architecture
 
@@ -43,7 +43,7 @@ Documentos aprobados: 0 de 17.
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Agent Framework]] | pendiente | ADR pendiente: contrato de agente |
+| [[Agent Framework]] | pendiente | [[ADR-003]] |
 | [[Autonomy and HITL]] | pendiente | [[ADR-004]] |
 | [[Verification]] | pendiente | ADR pendiente: capa de verificación |
 
