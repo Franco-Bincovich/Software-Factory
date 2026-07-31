@@ -33,6 +33,9 @@ No se crean carpetas nuevas sin ADR.
 **Contenido.** Español rioplatense.
 **Términos técnicos canónicos.** Inglés, según ADR-001. Un término, un significado, un nombre.
 
+**Un solo README.** Existe un único `README.md` en todo el vault, en la raíz. Las
+notas de carpeta se nombran `<Carpeta> - nota.md`.
+
 **Frontmatter obligatorio en todo documento:**
 
 ```yaml
@@ -45,7 +48,9 @@ actualizado: 2026-07-31
 ---
 ```
 
-Un documento sin frontmatter se considera inválido.
+El frontmatter es obligatorio para todo documento ubicado en las carpetas numeradas
+`00` a `07`. `README.md`, los reportes de raíz y el material de `99 - Archive` son
+artefactos de repositorio o evidencia, no documentos del vault, y quedan exentos.
 Un documento en estado `borrador` no puede ser citado como fundamento de otra decisión.
 
 **ADRs.** Numeración correlativa de tres dígitos desde `ADR-000`. Nunca se editan
