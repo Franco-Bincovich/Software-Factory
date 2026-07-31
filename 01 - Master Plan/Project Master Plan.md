@@ -24,48 +24,48 @@ Documentos aprobados: 0 de 15.
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| Project Master Plan | en-revisión | ADR-002 |
-| Vision | pendiente | — |
-| Objectives | pendiente | — |
-| Scope | pendiente | ADR pendiente: primer corte funcional |
-| Principles | pendiente | — |
-| Roadmap | pendiente | ADR pendiente: secuencia de fases |
-| Decision Making | pendiente | ADR-000 |
+| [[Project Master Plan]] | en-revisión | ADR-002 |
+| [[Vision]] | pendiente | — |
+| [[Objectives]] | pendiente | — |
+| [[Scope]] | pendiente | ADR pendiente: primer corte funcional |
+| [[Principles]] | pendiente | — |
+| [[Roadmap]] | pendiente | ADR pendiente: secuencia de fases |
+| [[Decision Making]] | pendiente | ADR-000 |
 
 ### 02 - Architecture
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| Architecture | pendiente | ADR pendiente: modelo de capas |
-| Technology Stack | bloqueado | requiere Agent Framework y Architecture |
+| [[Architecture]] | pendiente | ADR pendiente: modelo de capas |
+| [[Technology Stack]] | bloqueado | requiere Agent Framework y Architecture |
 
 ### 03 - Agent Framework
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| Agent Framework | pendiente | ADR pendiente: contrato de agente |
-| Autonomy and HITL | pendiente | ADR pendiente: modelo de control |
-| Verification | pendiente | ADR pendiente: capa de verificación |
+| [[Agent Framework]] | pendiente | ADR pendiente: contrato de agente |
+| [[Autonomy and HITL]] | pendiente | ADR pendiente: modelo de control |
+| [[Verification]] | pendiente | ADR pendiente: capa de verificación |
 
 ### 04 - Knowledge Management
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| Knowledge Management | pendiente | ADR pendiente: planos de conocimiento |
+| [[Knowledge Management]] | pendiente | ADR pendiente: planos de conocimiento |
 
 ### 05 - Infrastructure
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| Infrastructure | bloqueado | requiere Technology Stack |
-| Security | pendiente | ADR pendiente: identidad y permisos de agentes |
+| [[Infrastructure]] | bloqueado | requiere Technology Stack |
+| [[Security]] | pendiente | ADR pendiente: identidad y permisos de agentes |
 
 ### 06 - Standards
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| Standards | pendiente | — |
-| Development Methodology | pendiente | ADR pendiente: ciclo de trabajo |
+| [[Standards]] | pendiente | — |
+| [[Development Methodology]] | pendiente | ADR pendiente: ciclo de trabajo |
 
 ## Registro de riesgos
 
