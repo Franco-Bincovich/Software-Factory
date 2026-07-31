@@ -316,3 +316,116 @@ Tres cosas quedan abiertas y ninguna la resolví por mi cuenta:
 2. **`README.md` de la raíz no tiene frontmatter**, contradiciendo la regla que él mismo
    enuncia. Es uno de los 7 archivos que no puedo editar.
 3. **Fijar la identidad de git** antes del próximo commit.
+
+---
+
+## Correcciones 2026-07-31
+
+Segunda pasada. Cierra los tres puntos abiertos de la sección 7 e incorpora ADR-003.
+Nada de contenido se redactó ni interpretó: ADR-003 se transcribió literal.
+
+### Qué se cambió
+
+**Corrección 1 — colisión de README.**
+`99 - Archive/README.md` → `99 - Archive/Archive (archivado).md`, con `git mv` para
+preservar el historial. Ya no hay dos archivos `README.md` en el vault.
+
+**Corrección 2 — regla de frontmatter en `README.md` de la raíz.**
+La línea «Un documento sin frontmatter se considera inválido» se reemplazó por la
+regla de exención para `00`–`07`, reportes de raíz y `99 - Archive`. Con esto quedan
+cerradas las violaciones 1 y 2 de la sección 3.4: el `README.md` de la raíz y el
+material del Archive ya no incumplen nada, porque dejaron de estar alcanzados.
+Se agregó además la convención **Un solo README** a la sección de convenciones,
+ubicada junto a las demás reglas de nombres de archivo.
+
+**Corrección 3 — índice navegable.**
+Las 17 filas de las seis tablas del índice del `Project Master Plan` pasaron a
+wikilink en la columna *Documento*. Las columnas *Estado* y *ADR que lo sustenta* no
+se tocaron: las menciones a `Agent Framework`, `Architecture` y `Technology Stack`
+que aparecen ahí siguen siendo texto plano, como corresponde.
+
+**Corrección 4 — ADR-003.**
+Se creó `08 - ADR/ADR-003 - Contrato de agente.md` con el contenido literal: 158
+líneas, 13 secciones, los 13 campos obligatorios del contrato. Frontmatter completo
+con `aliases: [ADR-003]` tal como venía dictado. Se agregó `[[ADR-003]]` a la lista
+de decisiones de `00 - Home/Home.md`.
+
+### Verificación de `[[README]]`
+
+**Resuelve sin ambigüedad.** `[[README]]` desde `00 - Home/Home.md` apunta a un único
+destino, `README.md` de la raíz. El escaneo de nombres duplicados sobre los 21
+archivos `.md` del vault da cero colisiones.
+
+Estado completo de los enlaces del vault nuevo: **8 resueltos, 0 ambiguos.** Los 8
+son los 2 `[[Project Master Plan]]` y el `[[README]]` de `Home.md`, los 3 enlaces a
+ADRs por nombre completo, el `[[ADR-003]]` por alias, y el autoenlace del Master Plan.
+Los cuatro alias —`ADR-000`, `ADR-001`, `ADR-002`, `ADR-003`— resuelven bien.
+
+### Enlaces no resueltos en el índice: 16, no 15
+
+**Esperado en el prompt: 15. Real: 16.** No es un error de la ejecución sino una
+discrepancia de conteo que viene de los documentos mismos, y conviene resolverla.
+
+Los números reales:
+
+| Medición | Valor |
+|---|---|
+| Filas en las seis tablas del índice | **17** |
+| Documentos que ya existen | 1 (`Project Master Plan`) |
+| Wikilinks que no resuelven | **16** |
+
+Los 16 no resueltos: `Vision`, `Objectives`, `Scope`, `Principles`, `Roadmap`,
+`Decision Making`, `Architecture`, `Technology Stack`, `Agent Framework`,
+`Autonomy and HITL`, `Verification`, `Knowledge Management`, `Infrastructure`,
+`Security`, `Standards`, `Development Methodology`.
+
+Son enlaces no resueltos intencionales, como pedía la Tarea 3: Obsidian los muestra
+en otro color y el índice funciona como indicador de avance de la Fase 0. No se creó
+ninguno de esos archivos.
+
+**El "15" no aparece sólo en el prompt.** También está en dos documentos del vault:
+
+- `Project Master Plan.md`, línea 19: «Documentos aprobados: 0 de 15.» Deberían ser 17.
+- `ADR-002 - Estructura documental`: «un índice de quince completo», y su tabla de
+  documentos lista 17.
+
+**No corregí ninguno de los tres.** El conteo correcto es 17 documentos en el índice,
+pero cambiarlo es contenido, y en el caso de ADR-002 es además un ADR ya emitido: por
+la regla del propio ADR-000, un ADR no se edita, se supera. Queda para tu decisión si
+esto se arregla con una errata en el Master Plan o si amerita un ADR.
+
+### Correcciones a este mismo reporte
+
+La sección 4.3 decía «los 11 documentos que todavía no existen» y a continuación
+listaba 16 nombres. El número correcto es 16; el «11» venía del índice del vault viejo.
+La sección 4.3 quedó además superada por la Corrección 3: ya no es cierto que el índice
+no sea navegable.
+
+### Puntos menores, para tu conocimiento
+
+**Identidad de git.** No la configuré ni la pasé por línea de comandos, como pediste.
+Los tres commits de esta pasada quedaron con la identidad que git dedujo sola del
+sistema: `Franco Bincovich Granada <franbincovich@MacBook-Pro-de-Franco.local>`. Ese
+mail no existe, es el hostname de la máquina. Los tres commits de la primera pasada
+tienen `franbincovich@gmail.com`. **El historial quedó con dos autores distintos para
+el mismo trabajo.** Conviene que fijes la identidad y decidas si reescribís los
+últimos tres commits.
+
+**Estilo del enlace a ADR-003.** Se agregó `[[ADR-003]]` literal, como indicaba el
+prompt. Los otros tres de esa lista usan el nombre completo: `[[ADR-000 - Fundacion
+del conocimiento]]`. Funciona igual —el alias resuelve— pero la lista quedó con dos
+estilos mezclados. No lo uniformé.
+
+**`Archive (archivado).md` y la convención de notas de carpeta.** La nueva convención
+dice que las notas de carpeta se nombran `<Carpeta> - nota.md`, lo que daría
+`Archive - nota.md`. El nombre aplicado es el que indicaste explícitamente en la
+Corrección 1. Está en `99 - Archive`, que la nueva regla de frontmatter declara
+material exento, así que la contradicción es menor. Sin cambios.
+
+### Commits de esta pasada
+
+```
+fabf201  fix: resolver colision de README y precisar regla de frontmatter
+a2a8f16  feat: indice del Master Plan navegable
+7444822  feat: ADR-003 contrato de agente
+```
