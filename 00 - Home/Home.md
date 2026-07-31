@@ -22,6 +22,7 @@ Este archivo es navegación. La estructura oficial está en
 - [[ADR-001 - Glosario canonico]]
 - [[ADR-002 - Estructura documental]]
 - [[ADR-003]]
+- [[ADR-004]]
 
 ## Regla
 
