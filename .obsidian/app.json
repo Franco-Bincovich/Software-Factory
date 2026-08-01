@@ -4,6 +4,7 @@
   "useMarkdownLinks": false,
   "newLinkFormat": "shortest",
   "userIgnoreFilters": [
-    "99 - Archive/"
+    "99 - Archive/",
+    "07 - Projects/_reference/"
   ]
 }

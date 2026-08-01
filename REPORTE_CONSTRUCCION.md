@@ -515,3 +515,115 @@ tres son ADRs existentes, así que los tres podrían ser wikilink.
 
 El segundo commit de la pasada, `docs: actualizar indice y registro de riesgos`,
 incluye también esta sección del reporte.
+
+---
+
+## Referencia RRHH 2026-08-01
+
+Incorporación del primer proyecto de referencia y ampliación de ADR-002 para admitirlos.
+Append-only según la convención de evidencia del README.
+
+### Qué se incorporó
+
+Nueva carpeta `07 - Projects/_reference/hr-karstec/`, con dos archivos:
+
+| Archivo | Qué es |
+|---|---|
+| `ANALISIS_REFERENCIA.md` | 1.156 líneas. Análisis descriptivo de solo lectura del repositorio `VideCoding/RRHH`, en 12 secciones. Copiado sin editar. |
+| `hr-karstec - nota.md` | Nota de referencia: qué es el material, fecha, ruta de origen, que no fue producido por la plataforma y que no es normativo. |
+
+`.obsidian/app.json`: `07 - Projects/_reference/` agregado a `userIgnoreFilters`, junto a
+`99 - Archive/`.
+
+**El nombre de la carpeta es `hr-karstec`, no `rrhh`.** Lo determinó el punto 3 de las
+verificaciones previas — ver abajo.
+
+### Qué se editó de ADR-002
+
+Se editó por estar en estado `propuesto`, conforme a la regla de mutabilidad que el README
+declara desde la pasada anterior.
+
+| Ubicación | Cambio |
+|---|---|
+| Tabla de carpetas, fila `07` | Descripción reemplazada: incorpora el subdirectorio `_reference` y declara que su contenido no es normativo. |
+| Sección **Decisión**, al final | Bloque nuevo **Proyectos de referencia**: dónde viven, que son evidencia y no norma, que no se citan como fundamento, y que toda conclusión vinculante exige un ADR propio. |
+| Frontmatter | `actualizado: 2026-07-31` → `2026-08-01`. |
+
+`version` no se tocó: no se pidió.
+
+### Resultado de las cuatro verificaciones previas
+
+**1. `.git 2` — la premisa del prompt era incorrecta. Git funciona.**
+El repositorio tiene un `.git/` real y operativo: `git status` responde, rama `main`,
+working tree limpio, upstream configurado. `.git 2/` existe pero es un **directorio vacío,
+cero entradas** — un artefacto de copia del Finder que quedó *al lado* del repositorio, sin
+reemplazarlo. No interfiere: git no lo mira porque no se llama `.git`. **Consecuencia: el
+análisis de historial sí fue posible** y está en la sección 8 del informe (176 commits, mayo
+a julio de 2026). No se renombró ni se arregló nada.
+
+**2. `CLAUDE.md` — leído completo, 692 líneas.**
+Resumido en la sección 6.2 del informe, con sección propia. Es el archivo más relevante del
+repositorio para lo que estamos haciendo: documentación escrita específicamente para que un
+agente trabaje sobre ese código. Lo distintivo de su forma —jerarquía declarada de fuentes de
+verdad, documentos obsoletos marcados en vez de borrados, advertencias contra correcciones
+plausibles, inventario de deuda con números medidos y fecha, y quince reglas operativas
+numeradas— está desarrollado ahí.
+
+**3. Nombre real del proyecto: `HR Karstec`.**
+`RRHH` es el nombre del repositorio y de la carpeta; `HR Karstec` es el del producto. Los dos
+conviven en todo el repositorio. Evidencia en cinco documentos, incluidos los encabezados de
+`CLAUDE.md`, del README y de ambos archivos de dependencias.
+
+**Hallazgo asociado: ningún manifiesto de paquete declara el nombre del proyecto.** No hay
+`package.json` en la raíz, el único es el del frontend y se llama literalmente `"frontend"`,
+y el `pyproject.toml` del backend fue eliminado a propósito porque rompía el build de la
+plataforma de deploy. El nombre vive en la documentación, no en la configuración.
+
+Por eso la carpeta se llama **`hr-karstec`** y no `rrhh`, y la nota
+**`hr-karstec - nota.md`**, siguiendo la convención `<Carpeta> - nota.md` del README.
+
+**4. `migracionAWS/` — mezcla de código y documentación. No es infraestructura como código.**
+21 archivos: 4 documentos Markdown, 7 módulos Python con sufijo `_NEW`, 3 migraciones SQL
+numeradas 075–077, y 7 archivos de bytecode compilado. Estado: staging aislado, **no
+ejecutado y no en producción** — existe para escribir el código del destino sin tocar el
+backend vigente.
+
+**No hay infraestructura como código en ninguna parte del repositorio**: verificado, sin
+Terraform, CloudFormation, CDK, Serverless, Dockerfile ni docker-compose. Lo que hay es un
+plan escrito y el código de aplicación que ese plan necesita; el aprovisionamiento es manual.
+
+### Confirmación de saneamiento
+
+**El informe no contiene datos sensibles ni credenciales.** Verificado por barrido automático
+sobre el archivo final, con cero coincidencias en:
+
+| Categoría | Resultado |
+|---|---|
+| Credenciales, claves, tokens | ninguna |
+| Valores de variables de entorno | ninguno — solo los 18 **nombres** de `.env.example` |
+| Identificadores de proyecto de proveedores cloud | ninguno |
+| URLs de despliegue y dominios | ninguna |
+| Nombres de personas | ninguno |
+| Datos de negocio (dotación, nombres de empresas cliente, contenido de lotes) | ninguno |
+
+Ningún `.env` real se abrió en ningún momento: solo `.env.example`, y de ahí únicamente los
+nombres de variables. El informe declara su propio saneamiento en el encabezado, y su sección
+11 enumera de forma explícita qué no se pudo determinar.
+
+**El repositorio de origen quedó intacto:** working tree limpio, cero cambios, HEAD sin
+mover. No se modificó, creó ni borró nada, y no se ejecutaron tests, builds ni instalaciones.
+
+### Observación menor, sin cambios aplicados
+
+`07 - Projects/.gitkeep` sigue en su lugar aunque la carpeta ya no está vacía. Es inofensivo
+—git simplemente versiona un archivo vacío de más— pero contradice el criterio con que se
+puso. No lo borré: no estaba en el alcance.
+
+### Commits de esta pasada
+
+```
+42b0512  docs: ADR-002 admite proyectos de referencia
+```
+
+El segundo commit, `docs: incorporar analisis de referencia RRHH`, incluye la carpeta de
+referencia, el cambio de `.obsidian/app.json` y esta sección del reporte.
