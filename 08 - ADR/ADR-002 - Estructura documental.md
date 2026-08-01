@@ -2,7 +2,7 @@
 estado: propuesto
 version: 1.0
 owner: CEO
-actualizado: 2026-07-31
+actualizado: 2026-08-01
 adr: [ADR-000, ADR-001]
 aliases: [ADR-002]
 ---
@@ -62,7 +62,7 @@ justifica, mediante ADR.
 | 04 | Knowledge Management |
 | 05 | Infrastructure · Security |
 | 06 | Standards · Development Methodology |
-| 07 | un subdirectorio por proyecto, con su propia estructura |
+| 07 | Un subdirectorio por proyecto ejecutado por la plataforma. El subdirectorio `_reference` contiene proyectos externos usados como referencia de horizonte: no fueron producidos por la plataforma y no son normativos. |
 
 **Contenidos absorbidos, sin documento propio en esta fase:**
 
@@ -81,6 +81,11 @@ anfitrión, se promueve mediante ADR. No se crean documentos por anticipación.
 
 **Regla de principios.** Solo `Principles.md` enuncia principios. Los demás documentos
 los referencian por identificador.
+
+**Proyectos de referencia.** Un proyecto externo usado como referencia vive en
+`07 - Projects/_reference/<nombre>/`. Su material es evidencia, no norma: no lleva
+frontmatter, no se cita como fundamento de una decisión, y cualquier conclusión que se quiera
+volver vinculante debe pasar por un ADR propio.
 
 ## Justificación
 
