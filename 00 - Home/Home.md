@@ -23,6 +23,7 @@ Este archivo es navegación. La estructura oficial está en
 - [[ADR-002 - Estructura documental]]
 - [[ADR-003]]
 - [[ADR-004]]
+- [[ADR-005]]
 
 ## Regla
 
