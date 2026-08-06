@@ -1,6 +1,7 @@
 ---
 titulo: ADR-005 - Capa de verificacion y Acceptance Criteria
-estado: propuesto
+estado: aceptado
+aprobado: 2026-08-06
 version: 1.0
 owner: CEO
 actualizado: 2026-08-06

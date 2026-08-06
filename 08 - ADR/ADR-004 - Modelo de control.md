@@ -1,5 +1,6 @@
 ---
-estado: propuesto
+estado: aceptado
+aprobado: 2026-08-06
 version: 1.0
 owner: CEO
 adr: [ADR-000, ADR-001, ADR-003]
