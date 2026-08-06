@@ -14,6 +14,7 @@ Este archivo es navegación. La estructura oficial está en
 ## Entrada
 
 - [[Project Master Plan]] — índice oficial, estado de documentos, riesgos y secuencia de decisión
+- [[PLAN-V0.1]] — plan de versión: alcance, timebox y criterio de terminación de V0.1
 - [[README]] — convenciones del vault
 
 ## Decisiones

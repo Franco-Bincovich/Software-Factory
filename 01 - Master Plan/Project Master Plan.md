@@ -2,7 +2,7 @@
 estado: en-revision
 version: 1.0
 owner: CEO
-adr: [ADR-000, ADR-001, ADR-002]
+adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005]
 actualizado: 2026-07-31
 ---
 
@@ -11,12 +11,24 @@ actualizado: 2026-07-31
 Índice oficial del vault. Cualquier otro listado de documentos es navegación, no
 estructura.
 
+El criterio de cierre de Fase 0 y el alcance de la versión en curso viven en
+[[PLAN-V0.1]].
+
 ## Estado de la Fase 0
 
-**Fase 0 — Diseño Estratégico.** No se implementa software. La fase cierra cuando todos
-los documentos de este índice están en estado `aprobado`.
+**Fase 0 — Diseño Estratégico.** No se implementa software.
 
-Documentos aprobados: 0 de 17.
+La fase cierra cuando están aprobados los cinco ADRs que consume V0.1:
+ADR-005, ADR-008, ADR-009, ADR-010 y ADR-011. Los documentos restantes
+del índice entran a Fase Foundation como borradores con sus preguntas
+abiertas declaradas.
+
+Criterio anterior — "todos los documentos de este índice en estado
+aprobado" — reemplazado por [[PLAN-V0.1]]. Medía documentación escrita,
+no capacidad operativa, y no alcanzaba a los ADRs.
+
+ADRs aprobados: 6 (ADR-000 a ADR-005).
+ADRs pendientes para cerrar Fase 0: 4 (ADR-008, ADR-009, ADR-010, ADR-011).
 
 ## Índice
 
@@ -24,7 +36,7 @@ Documentos aprobados: 0 de 17.
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Project Master Plan]] | en-revisión | [[ADR-002]] |
+| [[Project Master Plan]] | en-revision | [[ADR-002]] |
 | [[Vision]] | pendiente | — |
 | [[Objectives]] | pendiente | — |
 | [[Scope]] | pendiente | ADR pendiente: primer corte funcional |
@@ -87,7 +99,7 @@ Orden en que deben cerrarse los ADRs pendientes. No se altera sin ADR.
 
 1. Contrato de agente — cerrado por ADR-003
 2. Modelo de control: autonomía y Gates — cerrado por ADR-004
-3. Capa de verificación y Acceptance Criteria
+3. Capa de verificación y Acceptance Criteria — cerrado por ADR-005
 4. Planos de conocimiento
 5. Modelo de capas de la arquitectura
 6. Primer corte funcional de V1
