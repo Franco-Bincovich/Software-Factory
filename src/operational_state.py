@@ -175,22 +175,21 @@ class OperationalState:
     def consumo(self, run_id):
         """Consumo acumulado de una corrida.
 
-        Los eventos `consumo_registrado` llevan el acumulado, no el delta, asi
-        que el consumo vigente es el del ultimo evento de ese tipo.
+        Cada evento `consumo_registrado` lleva lo consumido en ese momento, no
+        el acumulado: el acumulado es estado derivado y no se guarda como hecho.
+        Por eso se suman los deltas de todos los eventos de la corrida.
         """
-        fila = self._conexion.execute(
+        filas = self._conexion.execute(
             "SELECT payload FROM evento WHERE run_id = ? AND tipo = 'consumo_registrado' "
-            "ORDER BY id DESC LIMIT 1",
+            "ORDER BY id",
             (run_id,),
-        ).fetchone()
-        if fila is None:
-            return {"costo": 0, "tiempo": 0, "iteraciones": 0}
-        payload = json.loads(fila["payload"])
-        return {
-            "costo": payload.get("costo", 0),
-            "tiempo": payload.get("tiempo", 0),
-            "iteraciones": payload.get("iteraciones", 0),
-        }
+        ).fetchall()
+        total = {"costo": 0, "tiempo": 0, "iteraciones": 0}
+        for fila in filas:
+            payload = json.loads(fila["payload"])
+            for clave in total:
+                total[clave] += payload.get(clave, 0)
+        return total
 
     # --- identidad --------------------------------------------------------
 

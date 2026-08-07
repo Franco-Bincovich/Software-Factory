@@ -88,7 +88,7 @@ BEGIN SELECT RAISE(ABORT, 'evento es inmutable'); END;
 | `gate_resuelto` | CEO | decisión, motivo si rechaza |
 | `iteracion_producida` | requirement-agent | número de iteración, plan producido |
 | `verificacion_ejecutada` | plataforma | veredicto y lista de incumplimientos |
-| `consumo_registrado` | plataforma | costo, tiempo, iteraciones acumulados |
+| `consumo_registrado` | plataforma | costo, tiempo, iteraciones consumidos en ese momento, no el acumulado |
 | `escalamiento` | requirement-agent | condición que lo disparó, info mínima |
 | `run_cortada` | plataforma | qué techo se alcanzó |
 | `run_finalizada` | plataforma | resultado |
@@ -139,7 +139,7 @@ un nombre inocente. Se declara como parcial en vez de fingir que cubre el caso.
 | Reconstrucción | Con solo los eventos de una corrida se reconstruye qué pasó, sin consultar ninguna otra fuente |
 | Actor obligatorio | `append` con actor vacío o `"sistema"` es rechazado |
 | Secretos | `append` con payload que contiene `api_key` en cualquier nivel es rechazado |
-| Consumo | `consumo` devuelve el acumulado correcto tras varios `consumo_registrado` |
+| Consumo | `consumo` devuelve la suma de los deltas tras varios `consumo_registrado` |
 | Gates | `gates_pendientes` devuelve solo los abiertos sin `gate_resuelto` posterior |
 | Aislamiento entre corridas | Eventos de dos `run_id` distintos no se mezclan en `leer_run` |
 

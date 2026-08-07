@@ -181,13 +181,21 @@ class Consumo(BaseTemporal):
         self.assertEqual(
             self.store.consumo(self.run), {"costo": 0, "tiempo": 0, "iteraciones": 0}
         )
-        for costo, tiempo, iteraciones in ((0.4, 3, 1), (0.9, 7, 2), (1.5, 12, 3)):
+        # Cada evento lleva el delta de ese momento, no el acumulado.
+        for _ in range(3):
             self.store.append(
                 self.run, "consumo_registrado", "plataforma",
-                {"costo": costo, "tiempo": tiempo, "iteraciones": iteraciones},
+                {"costo": 0.5, "tiempo": 3, "iteraciones": 1},
             )
         self.assertEqual(
-            self.store.consumo(self.run), {"costo": 1.5, "tiempo": 12, "iteraciones": 3}
+            self.store.consumo(self.run), {"costo": 1.5, "tiempo": 9, "iteraciones": 3}
+        )
+        # Un delta más se suma; no reemplaza al anterior.
+        self.store.append(
+            self.run, "consumo_registrado", "plataforma", {"costo": 0.25, "tiempo": 1, "iteraciones": 1}
+        )
+        self.assertEqual(
+            self.store.consumo(self.run), {"costo": 1.75, "tiempo": 10, "iteraciones": 4}
         )
         # El consumo es por corrida.
         otro = self.store.nuevo_run_id()
