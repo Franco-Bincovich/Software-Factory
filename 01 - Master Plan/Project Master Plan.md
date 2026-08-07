@@ -16,19 +16,17 @@ El criterio de cierre de Fase 0 y el alcance de la versión en curso viven en
 
 ## Estado de la Fase 0
 
-**Fase 0 — Diseño Estratégico.** No se implementa software.
+**Fase 0 — Diseño Estratégico.** Cerrada el 2026-08-07.
 
-La fase cierra cuando están aprobados los cinco ADRs que consume V0.1:
-ADR-005, ADR-009, ADR-010 y ADR-011 ya cerrados, y ADR-008 pendiente.
-Los documentos restantes del índice entran a Fase 1 como borradores con
-sus preguntas abiertas declaradas.
+Los cinco ADRs que consume V0.1 están aprobados: ADR-005, ADR-008,
+ADR-009, ADR-010 y ADR-011. Los diecisiete documentos del índice
+existen como archivo.
 
-Criterio anterior — "todos los documentos de este índice en estado
-aprobado" — reemplazado por [[PLAN-V0.1]]. Medía documentación escrita,
-no capacidad operativa, y no alcanzaba a los ADRs.
+Criterio de cierre según [[PLAN-V0.1]]: capacidad operativa demostrada,
+no cantidad de documentos aprobados.
 
-ADRs aprobados: 9 (ADR-000 a ADR-005, ADR-009, ADR-010, ADR-011).
-ADRs pendientes para cerrar Fase 0: 1 (ADR-008).
+ADRs aprobados: 12 (ADR-000 a ADR-006, ADR-008 a ADR-012).
+Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 
 ## Índice
 
@@ -83,6 +81,30 @@ ADRs pendientes para cerrar Fase 0: 1 (ADR-008).
 > archivo. Su estado real se declara en su propio frontmatter cuando se
 > creen.
 
+### Artefactos vinculantes
+
+| Documento | Tipo | Estado |
+|---|---|---|
+| [[ADR-000]] | adr | aceptado |
+| [[ADR-001]] | adr | aceptado |
+| [[ADR-002]] | adr | aceptado |
+| [[ADR-003]] | adr | aceptado |
+| [[ADR-004]] | adr | aceptado |
+| [[ADR-005]] | adr | aceptado |
+| [[ADR-006]] | adr | aceptado |
+| [[ADR-008]] | adr | aceptado |
+| [[ADR-009]] | adr | aceptado |
+| [[ADR-010]] | adr | aceptado |
+| [[ADR-011]] | adr | aceptado |
+| [[ADR-012]] | adr | aceptado |
+| [[Contrato del Plan de Trabajo]] | contrato | aceptado |
+| [[Requirement Agent]] | agent-definition | aceptado |
+| [[PLAN-V0.1]] | plan-de-version | aceptado |
+| [[Ruleset mecánico]] | contrato | pendiente de ingreso |
+
+> Los documentos de tipo `guia` no se listan: son navegación, no
+> estructura.
+
 ## Registro de riesgos
 
 Riesgos vivos del proyecto. Se actualiza al cerrar cada ADR.
@@ -106,14 +128,15 @@ Orden en que deben cerrarse los ADRs pendientes. No se altera sin ADR.
 2. Modelo de control: autonomía y Gates — cerrado por ADR-004
 3. Capa de verificación y Acceptance Criteria — cerrado por ADR-005
 4. Planos de conocimiento — cerrado por ADR-011
-5. Primer corte funcional de V1 — ADR-008, pendiente
+5. Primer corte funcional de V1 — cerrado por ADR-008
 6. Identidad y permisos de agentes — cerrado por ADR-009
 7. Modelo de costo y presupuesto — cerrado por ADR-010
 8. Modelo de capas de la arquitectura — pendiente, diferido
 9. Secuencia de fases del roadmap — pendiente, diferido
+10. Taxonomía documental — cerrado por ADR-012
 
 Los puntos 1 a 7 son los que cierran Fase 0 según [[PLAN-V0.1]].
 Los puntos 8 y 9 se difieren: no los consume V0.1.
 
-Technology Stack e Infrastructure quedan bloqueados hasta que los
-puntos 1 a 7 estén aprobados.
+Technology Stack e Infrastructure quedaron desbloqueados el 2026-08-07,
+al cerrarse los puntos 1 a 7.

@@ -2,7 +2,7 @@
 estado: aprobado
 version: 1.0
 owner: CEO
-adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-009, ADR-010, ADR-011]
+adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012]
 actualizado: 2026-07-31
 ---
 
@@ -27,9 +27,12 @@ Este archivo es navegación. La estructura oficial está en
 - [[ADR-003]]
 - [[ADR-004]]
 - [[ADR-005]]
+- [[ADR-006]]
+- [[ADR-008]]
 - [[ADR-009]]
 - [[ADR-010]]
 - [[ADR-011]]
+- [[ADR-012]]
 
 ## Regla
 
