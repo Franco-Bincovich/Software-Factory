@@ -8,6 +8,14 @@ owner: CEO
 actualizado: 2026-08-06
 adr: [ADR-001, ADR-003, ADR-004, ADR-005, ADR-009, ADR-010, ADR-011]
 aliases: [Requirement Agent]
+agent_id: requirement-agent
+techo_costo_usd: 2
+techo_tiempo_min: 20
+techo_iteraciones: 5
+herramientas: [leer_pedido, leer_vault, escribir_salida, escribir_operational_state]
+vault_lectura: ["03 - Agent Framework/Contrato del Plan de Trabajo.md", "08 - ADR/ADR-001 - Glosario canonico.md"]
+vault_escritura: []
+memory: none
 ---
 
 # Requirement Agent — Agent Definition
