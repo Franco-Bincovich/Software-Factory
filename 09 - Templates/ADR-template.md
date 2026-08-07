@@ -4,6 +4,8 @@ aprobado:
 version: 0.1
 owner: CEO
 actualizado: AAAA-MM-DD
+adr: []
+aliases: []
 ---
 
 # ADR-NNN — Título

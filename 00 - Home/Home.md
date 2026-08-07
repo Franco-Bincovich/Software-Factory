@@ -15,6 +15,7 @@ Este archivo es navegación. La estructura oficial está en
 
 - [[Project Master Plan]] — índice oficial, estado de documentos, riesgos y secuencia de decisión
 - [[PLAN-V0.1]] — plan de versión: alcance, timebox y criterio de terminación de V0.1
+- [[Contrato del Plan de Trabajo]] — estructura y reglas de validez del Plan de Trabajo, salida del Requirement Agent
 - [[README]] — convenciones del vault
 
 ## Decisiones

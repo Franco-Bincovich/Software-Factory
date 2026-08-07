@@ -121,7 +121,7 @@ bloquea nada.
 
 | Tarea | Qué es | Criterio de aceptación | Depende de |
 |---|---|---|---|
-| **T6 — Esquema del plan de trabajo** | El formato fijo de salida del agente. Es el contrato de entrada del Developer Agent en V0.2 | Un plan escrito a mano valida contra el esquema; uno al que le falta un criterio de aceptación, no | T1 |
+| **T6 — Esquema del plan de trabajo** | El formato fijo de salida del agente. Es el contrato de entrada del Developer Agent en V0.2. Cerrado por [[Contrato del Plan de Trabajo]]. | Un plan escrito a mano valida contra el esquema; uno al que le falta un criterio de aceptación, no | T1 |
 | **T7 — Verificador estructural** | Rechaza el plan si: hay tarea sin criterio de aceptación, criterio no medible, dependencia a tarea inexistente, tarea no rastreable al pedido original, o alcance no solicitado. Si el plan supera 10 tareas, escala en vez de entregar | Sobre cinco planes con un defecto sembrado cada uno, detecta los cinco; sobre un plan limpio, no marca falsos positivos | T6 |
 | **T8 — Formulario de Intake** | Campos fijos: qué se quiere, para qué, qué NO entra, techo de presupuesto | Un pedido sin techo declarado no arranca | T4 |
 | **T9 — Agent Definition del Requirement Agent** | Los 13 campos obligatorios de ADR-003, completos | Ningún campo vacío. Declara consumidor temporal: humano | T3, T4 |
