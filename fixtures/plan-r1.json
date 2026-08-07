@@ -1,0 +1,98 @@
+{
+  "plan_id": "PLAN-0001-R1",
+  "run_id": "RUN-0001",
+  "pedido_id": "PED-0001",
+  "sucede_a": null,
+  "restricciones": {
+    "techo_costo": 2,
+    "techo_tiempo_min": 20,
+    "techo_iteraciones": 5,
+    "alcance_excluido": [
+      "interfaz gráfica",
+      "conexión al sistema viejo"
+    ]
+  },
+  "unidades": [
+    {
+      "id": "U1",
+      "enunciado": "Leer el archivo CSV de entrada y parsear cada fila en un registro.",
+      "criterios": [
+        {
+          "condicion_observable": "Dado un CSV con encabezado y 50 filas de datos, la cantidad de registros que devuelve el lector.",
+          "resultado_esperado": "50 registros, sin contar el encabezado.",
+          "procedimiento": "Correr el lector sobre fixtures/altas-50.csv y contar los registros devueltos."
+        },
+        {
+          "condicion_observable": "Dada una fila con menos columnas que el encabezado, qué devuelve el lector para esa fila.",
+          "resultado_esperado": "La fila se marca como no parseable con su número de fila, y el lector no aborta.",
+          "procedimiento": "Correr el lector sobre fixtures/altas-fila-corta.csv y verificar que devuelve 1 fila no parseable y sigue procesando las demás."
+        }
+      ],
+      "dependencias": [],
+      "rastreo": "lee un CSV de altas de empleados",
+      "artefacto_esperado": "Módulo lector que devuelve la lista de registros y la lista de filas no parseables."
+    },
+    {
+      "id": "U2",
+      "enunciado": "Validar cada registro contra las reglas obligatorias de un alta de empleado.",
+      "criterios": [
+        {
+          "condicion_observable": "Dado un registro sin legajo, qué reglas incumplidas devuelve el validador.",
+          "resultado_esperado": "Exactamente una regla incumplida, identificada como legajo ausente.",
+          "procedimiento": "Correr el validador sobre un registro con el campo legajo vacío y leer la lista de reglas incumplidas."
+        },
+        {
+          "condicion_observable": "Dado un registro con fecha de ingreso posterior a hoy, qué reglas incumplidas devuelve el validador.",
+          "resultado_esperado": "Exactamente una regla incumplida, identificada como fecha de ingreso futura.",
+          "procedimiento": "Correr el validador sobre un registro con fecha de ingreso de mañana y leer la lista de reglas incumplidas."
+        }
+      ],
+      "dependencias": [
+        "U1"
+      ],
+      "rastreo": "altas de empleados",
+      "artefacto_esperado": "Módulo validador que devuelve, por registro, la lista de reglas incumplidas."
+    },
+    {
+      "id": "U3",
+      "enunciado": "Determinar qué filas no se pueden importar y con qué motivo.",
+      "criterios": [],
+      "dependencias": [
+        "U2"
+      ],
+      "rastreo": "qué filas no se pueden importar",
+      "artefacto_esperado": "Estructura con número de fila, identificador del registro y motivos de rechazo."
+    },
+    {
+      "id": "U4",
+      "enunciado": "Emitir el reporte de filas no importables por salida estándar.",
+      "criterios": [
+        {
+          "condicion_observable": "Dado un lote con 3 filas no importables, la cantidad de líneas de detalle del reporte.",
+          "resultado_esperado": "3 líneas de detalle, una por fila rechazada, más una línea de total.",
+          "procedimiento": "Correr la herramienta completa sobre fixtures/altas-50.csv con 3 defectos sembrados y contar las líneas del reporte."
+        },
+        {
+          "condicion_observable": "Dado un lote sin filas rechazadas, qué emite el reporte.",
+          "resultado_esperado": "Una única línea que declara cero filas rechazadas.",
+          "procedimiento": "Correr la herramienta completa sobre fixtures/altas-50-limpio.csv y leer la salida."
+        }
+      ],
+      "dependencias": [
+        "U3"
+      ],
+      "rastreo": "reporta qué filas no se pueden importar",
+      "artefacto_esperado": "Reporte de texto con una línea por fila rechazada y una línea de total."
+    }
+  ],
+  "supuestos": [
+    "El CSV usa coma como separador y codificación UTF-8. El pedido no lo especifica.",
+    "La primera fila del archivo es el encabezado.",
+    "El archivo de entrada entra en memoria; no se requiere procesamiento por streaming."
+  ],
+  "fuera_de_alcance": [
+    "Corregir automáticamente las filas rechazadas.",
+    "Persistir los registros válidos en algún destino.",
+    "Reportar advertencias sobre filas que sí se pueden importar."
+  ]
+}
