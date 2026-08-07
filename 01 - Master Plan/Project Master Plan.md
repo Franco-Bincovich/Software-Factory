@@ -19,7 +19,7 @@ El criterio de cierre de Fase 0 y el alcance de la versión en curso viven en
 **Fase 0 — Diseño Estratégico.** No se implementa software.
 
 La fase cierra cuando están aprobados los cinco ADRs que consume V0.1:
-ADR-005 y ADR-011 ya cerrados, y ADR-008, ADR-009 y ADR-010 pendientes.
+ADR-005, ADR-009, ADR-010 y ADR-011 ya cerrados, y ADR-008 pendiente.
 Los documentos restantes del índice entran a Fase 1 como borradores con
 sus preguntas abiertas declaradas.
 
@@ -27,8 +27,8 @@ Criterio anterior — "todos los documentos de este índice en estado
 aprobado" — reemplazado por [[PLAN-V0.1]]. Medía documentación escrita,
 no capacidad operativa, y no alcanzaba a los ADRs.
 
-ADRs aprobados: 7 (ADR-000 a ADR-005, ADR-011).
-ADRs pendientes para cerrar Fase 0: 3 (ADR-008, ADR-009, ADR-010).
+ADRs aprobados: 9 (ADR-000 a ADR-005, ADR-009, ADR-010, ADR-011).
+ADRs pendientes para cerrar Fase 0: 1 (ADR-008).
 
 ## Índice
 
@@ -57,20 +57,20 @@ ADRs pendientes para cerrar Fase 0: 3 (ADR-008, ADR-009, ADR-010).
 |---|---|---|
 | [[Agent Framework]] | pendiente | [[ADR-003]] |
 | [[Autonomy and HITL]] | pendiente | [[ADR-004]] |
-| [[Verification]] | pendiente | ADR pendiente: capa de verificación |
+| [[Verification]] | pendiente | [[ADR-005]] |
 
 ### 04 - Knowledge Management
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Knowledge Management]] | pendiente | ADR pendiente: planos de conocimiento |
+| [[Knowledge Management]] | pendiente | [[ADR-011]] |
 
 ### 05 - Infrastructure
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
 | [[Infrastructure]] | bloqueado | requiere Technology Stack |
-| [[Security]] | pendiente | ADR pendiente: identidad y permisos de agentes |
+| [[Security]] | pendiente | [[ADR-009]] |
 
 ### 06 - Standards
 
@@ -89,13 +89,14 @@ Riesgos vivos del proyecto. Se actualiza al cerrar cada ADR.
 
 | # | Riesgo | Impacto | Estado |
 |---|---|---|---|
-| R1 | Verificación producida por el mismo tipo de sistema que produce el código: la autonomía se vuelve confianza ciega. | Alto | Abierto — mitigación en ADR de verificación |
-| R2 | Costo de ejecución sin techo por agente ni por proyecto. | Alto | Abierto — sin ADR asignado |
+| R1 | Verificación producida por el mismo tipo de sistema que produce el código: la autonomía se vuelve confianza ciega. | Alto | Mitigado parcialmente — ADR-005. Verificación sustantiva diferida a V0.3. |
+| R2 | Costo de ejecución sin techo por agente ni por proyecto. | Alto | Mitigado — ADR-010. |
 | R3 | El CEO como único aprobador de todos los Gates lo convierte en cuello de botella por diseño. | Alto | Mitigado parcialmente — ADR-004. Persiste mientras exista un solo rol humano aprobador. |
 | R4 | Alcance abierto ("cualquier tipo de sistema") sin primer corte funcional. | Alto | Abierto — mitigación en ADR de primer corte |
 | R5 | Bootstrapping: la plataforma construida por sus propios agentes genera dependencia circular. | Medio | Abierto |
 | R6 | Agent Factory priorizada antes de operar los Core Agents de punta a punta. | Medio | Abierto |
 | R7 | Aislamiento de datos entre proyectos de terceros no definido. | Medio | Abierto |
+| R8 | Pérdida del Operational State: sin respaldo automático, perder ese almacén elimina toda la evidencia de la fábrica sin reconstrucción posible desde el Vault. | Alto | Abierto — mitigación en Infrastructure, hoy bloqueado. ADR-011. |
 
 ## Secuencia de decisión
 
@@ -106,8 +107,8 @@ Orden en que deben cerrarse los ADRs pendientes. No se altera sin ADR.
 3. Capa de verificación y Acceptance Criteria — cerrado por ADR-005
 4. Planos de conocimiento — cerrado por ADR-011
 5. Primer corte funcional de V1 — ADR-008, pendiente
-6. Identidad y permisos de agentes — ADR-009, pendiente
-7. Modelo de costo y presupuesto — ADR-010, pendiente
+6. Identidad y permisos de agentes — cerrado por ADR-009
+7. Modelo de costo y presupuesto — cerrado por ADR-010
 8. Modelo de capas de la arquitectura — pendiente, diferido
 9. Secuencia de fases del roadmap — pendiente, diferido
 

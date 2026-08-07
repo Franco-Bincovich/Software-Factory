@@ -5,6 +5,7 @@ aprobado: 2026-08-06
 version: 1.0
 owner: CEO
 actualizado: 2026-08-06
+adr: [ADR-001, ADR-003, ADR-004, ADR-011]
 aliases: [ADR-005]
 ---
 
