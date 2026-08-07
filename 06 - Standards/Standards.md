@@ -3,7 +3,7 @@ titulo: Standards
 tipo: norma
 estado: aceptado
 aprobado: 2026-08-07
-version: 1.0
+version: 1.1
 owner: CEO
 actualizado: 2026-08-07
 adr: [ADR-000, ADR-001, ADR-002, ADR-012]
@@ -73,7 +73,7 @@ Campos obligatorios en todo documento vinculante, en este orden:
 ```yaml
 titulo:        # excepto ADRs, cuyo H1 es el título
 tipo:          # uno de los seis de ADR-012
-estado:        # propuesto | aceptado | reemplazado
+estado:        # propuesto | borrador | aceptado | reemplazado
 aprobado:      # fecha, vacío mientras esté propuesto
 version:
 owner:
@@ -81,6 +81,11 @@ actualizado:
 adr: []        # los ADRs de los que depende
 aliases: []
 ```
+
+`borrador` es un estado legítimo y no un documento a medias: designa un
+documento que declara explícitamente qué le falta y por qué. Un
+documento incompleto que no declara sus huecos no es borrador, está mal
+escrito.
 
 **`adr:` refleja las dependencias reales del cuerpo.** Si el documento cita un
 ADR, ese ADR está en la lista. Un frontmatter desactualizado es documentación que

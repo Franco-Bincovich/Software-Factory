@@ -1,10 +1,12 @@
 ---
+titulo: Home
 tipo: guia
 estado: aceptado
+aprobado: 2026-08-07
 version: 1.0
 owner: CEO
 adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012]
-actualizado: 2026-07-31
+actualizado: 2026-08-07
 ---
 
 # Software Factory Autónoma

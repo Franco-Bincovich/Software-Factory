@@ -1,6 +1,6 @@
 ---
 titulo: Runbook V0.1
-tipo: runbook
+tipo: guia
 estado: aceptado
 aprobado: 2026-08-07
 version: 1.0

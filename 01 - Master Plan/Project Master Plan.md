@@ -1,10 +1,11 @@
 ---
-tipo: plan-de-version
-estado: en-revision
+tipo: norma
+estado: aceptado
+aprobado: 2026-08-07
 version: 1.0
 owner: CEO
 adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-012]
-actualizado: 2026-07-31
+actualizado: 2026-08-07
 ---
 
 # Project Master Plan
@@ -35,10 +36,10 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Project Master Plan]] | en-revision | [[ADR-002]] |
+| [[Project Master Plan]] | aceptado | [[ADR-002]] |
 | [[Vision]] | aceptado | — |
 | [[Objectives]] | aceptado | — |
-| [[Scope]] | aceptado | ADR pendiente: primer corte funcional |
+| [[Scope]] | aceptado | [[ADR-008]] |
 | [[Principles]] | aceptado | — |
 | [[Roadmap]] | aceptado | ADR pendiente: secuencia de fases |
 | [[Decision Making]] | aceptado | [[ADR-000]] |
@@ -48,7 +49,7 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
 | [[Architecture]] | aceptado | ADR pendiente: modelo de capas |
-| [[Technology Stack]] | aceptado | requiere Agent Framework y Architecture |
+| [[Technology Stack]] | aceptado | [[ADR-004]], [[ADR-006]], [[ADR-008]], [[ADR-011]] |
 
 ### 03 - Agent Framework
 
@@ -68,7 +69,7 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Infrastructure]] | aceptado | requiere Technology Stack |
+| [[Infrastructure]] | aceptado | [[ADR-008]], [[ADR-009]], [[ADR-011]] |
 | [[Security]] | borrador | [[ADR-009]] |
 
 ### 06 - Standards
@@ -101,8 +102,9 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 | [[Contrato del Plan de Trabajo]] | contrato | aceptado |
 | [[Requirement Agent]] | agent-definition | aceptado |
 | [[PLAN-V0.1]] | plan-de-version | aceptado |
-| [[Project Master Plan]] | plan-de-version | en-revision |
+| [[Project Master Plan]] | norma | aceptado |
 | [[Ruleset mecánico]] | contrato | aceptado |
+| [[Constitución Técnica]] | norma | aceptado |
 
 ## Registro de riesgos
 

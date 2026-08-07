@@ -40,13 +40,20 @@ notas de carpeta se nombran `<Carpeta> - nota.md`.
 
 ```yaml
 ---
-estado: borrador | en-revision | aprobado | superado
-version: 0.1
+titulo:        # excepto ADRs, cuyo H1 es el título
+tipo:          # adr | norma | contrato | agent-definition | plan-de-version | guia
+estado:        # propuesto | borrador | aceptado | reemplazado
+aprobado:      # fecha, vacío mientras esté propuesto
+version: 1.0
 owner: CEO
+actualizado: 2026-08-07
 adr: [ADR-000, ADR-001]
-actualizado: 2026-07-31
+aliases: []
 ---
 ```
+
+Los seis valores de `tipo:` son lista cerrada según ADR-012: los cinco primeros
+obligan, `guia` no. El orden de los campos y los cuatro estados los fija Standards.
 
 El frontmatter es obligatorio para todo documento ubicado en las carpetas numeradas
 `00` a `07`. `README.md`, los reportes de raíz y el material de `99 - Archive` son
