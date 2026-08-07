@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory/schema/plan-de-trabajo.schema.json",
+  "title": "Plan de Trabajo",
+  "description": "Forma canonica del Plan de Trabajo segun T7. El esquema valida forma y tipos. Las restricciones de contenido que cubren las siete reglas no se declaran aca: si el esquema las rechazara, el verificador devolveria regla 0 y no llegaria a evaluarlas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_id",
+    "run_id",
+    "pedido_id",
+    "sucede_a",
+    "restricciones",
+    "unidades",
+    "supuestos",
+    "fuera_de_alcance"
+  ],
+  "properties": {
+    "plan_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "pedido_id": { "type": "string" },
+    "sucede_a": { "type": ["string", "null"] },
+    "restricciones": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "techo_costo",
+        "techo_tiempo_min",
+        "techo_iteraciones",
+        "alcance_excluido"
+      ],
+      "properties": {
+        "techo_costo": { "type": "number" },
+        "techo_tiempo_min": { "type": "number" },
+        "techo_iteraciones": { "type": "number" },
+        "alcance_excluido": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "unidades": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "enunciado",
+          "criterios",
+          "dependencias",
+          "rastreo",
+          "artefacto_esperado"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "enunciado": { "type": "string" },
+          "criterios": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "condicion_observable": { "type": "string" },
+                "resultado_esperado": { "type": "string" },
+                "procedimiento": { "type": "string" }
+              }
+            }
+          },
+          "dependencias": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "rastreo": { "type": "string" },
+          "artefacto_esperado": { "type": "string" }
+        }
+      }
+    },
+    "supuestos": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "fuera_de_alcance": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
