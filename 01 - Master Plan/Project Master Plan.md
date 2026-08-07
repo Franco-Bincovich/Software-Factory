@@ -19,16 +19,16 @@ El criterio de cierre de Fase 0 y el alcance de la versión en curso viven en
 **Fase 0 — Diseño Estratégico.** No se implementa software.
 
 La fase cierra cuando están aprobados los cinco ADRs que consume V0.1:
-ADR-005, ADR-008, ADR-009, ADR-010 y ADR-011. Los documentos restantes
-del índice entran a Fase 1 como borradores con sus preguntas
-abiertas declaradas.
+ADR-005 y ADR-011 ya cerrados, y ADR-008, ADR-009 y ADR-010 pendientes.
+Los documentos restantes del índice entran a Fase 1 como borradores con
+sus preguntas abiertas declaradas.
 
 Criterio anterior — "todos los documentos de este índice en estado
 aprobado" — reemplazado por [[PLAN-V0.1]]. Medía documentación escrita,
 no capacidad operativa, y no alcanzaba a los ADRs.
 
-ADRs aprobados: 6 (ADR-000 a ADR-005).
-ADRs pendientes para cerrar Fase 0: 4 (ADR-008, ADR-009, ADR-010, ADR-011).
+ADRs aprobados: 7 (ADR-000 a ADR-005, ADR-011).
+ADRs pendientes para cerrar Fase 0: 3 (ADR-008, ADR-009, ADR-010).
 
 ## Índice
 
@@ -78,6 +78,10 @@ ADRs pendientes para cerrar Fase 0: 4 (ADR-008, ADR-009, ADR-010, ADR-011).
 |---|---|---|
 | [[Standards]] | pendiente | — |
 | [[Development Methodology]] | pendiente | ADR pendiente: ciclo de trabajo |
+
+> Los estados de esta tabla describen documentos que aún no existen como
+> archivo. Su estado real se declara en su propio frontmatter cuando se
+> creen.
 
 ## Registro de riesgos
 

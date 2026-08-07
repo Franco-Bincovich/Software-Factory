@@ -1,7 +1,8 @@
 ---
 titulo: PLAN-V0.1 — Requirement Agent
 tipo: plan-de-version
-estado: propuesto
+estado: aceptado
+aprobado: 2026-08-06
 version: 1.0
 dueño: Franco Bincovich Granada
 fecha: 2026-08-06
