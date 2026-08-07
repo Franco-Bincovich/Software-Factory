@@ -1,8 +1,9 @@
 ---
+tipo: plan-de-version
 estado: en-revision
 version: 1.0
 owner: CEO
-adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005]
+adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-012]
 actualizado: 2026-07-31
 ---
 
@@ -35,51 +36,51 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
 | [[Project Master Plan]] | en-revision | [[ADR-002]] |
-| [[Vision]] | pendiente | — |
-| [[Objectives]] | pendiente | — |
-| [[Scope]] | pendiente | ADR pendiente: primer corte funcional |
-| [[Principles]] | pendiente | — |
-| [[Roadmap]] | pendiente | ADR pendiente: secuencia de fases |
-| [[Decision Making]] | pendiente | [[ADR-000]] |
+| [[Vision]] | aceptado | — |
+| [[Objectives]] | aceptado | — |
+| [[Scope]] | aceptado | ADR pendiente: primer corte funcional |
+| [[Principles]] | aceptado | — |
+| [[Roadmap]] | aceptado | ADR pendiente: secuencia de fases |
+| [[Decision Making]] | aceptado | [[ADR-000]] |
 
 ### 02 - Architecture
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Architecture]] | pendiente | ADR pendiente: modelo de capas |
-| [[Technology Stack]] | bloqueado | requiere Agent Framework y Architecture |
+| [[Architecture]] | aceptado | ADR pendiente: modelo de capas |
+| [[Technology Stack]] | aceptado | requiere Agent Framework y Architecture |
 
 ### 03 - Agent Framework
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Agent Framework]] | pendiente | [[ADR-003]] |
-| [[Autonomy and HITL]] | pendiente | [[ADR-004]] |
-| [[Verification]] | pendiente | [[ADR-005]] |
+| [[Agent Framework]] | aceptado | [[ADR-003]] |
+| [[Autonomy and HITL]] | aceptado | [[ADR-004]] |
+| [[Verification]] | aceptado | [[ADR-005]] |
 
 ### 04 - Knowledge Management
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Knowledge Management]] | pendiente | [[ADR-011]] |
+| [[Knowledge Management]] | aceptado | [[ADR-011]] |
 
 ### 05 - Infrastructure
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Infrastructure]] | bloqueado | requiere Technology Stack |
-| [[Security]] | pendiente | [[ADR-009]] |
+| [[Infrastructure]] | aceptado | requiere Technology Stack |
+| [[Security]] | borrador | [[ADR-009]] |
 
 ### 06 - Standards
 
 | Documento | Estado | ADR que lo sustenta |
 |---|---|---|
-| [[Standards]] | pendiente | — |
-| [[Development Methodology]] | pendiente | ADR pendiente: ciclo de trabajo |
+| [[Standards]] | aceptado | — |
+| [[Development Methodology]] | aceptado | ADR pendiente: ciclo de trabajo |
 
-> Los estados de esta tabla describen documentos que aún no existen como
-> archivo. Su estado real se declara en su propio frontmatter cuando se
-> creen.
+> El estado de cada documento se lee de su propio frontmatter. Los
+> documentos de tipo `guia` no se listan acá: son navegación, no
+> estructura.
 
 ### Artefactos vinculantes
 
@@ -100,10 +101,8 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 | [[Contrato del Plan de Trabajo]] | contrato | aceptado |
 | [[Requirement Agent]] | agent-definition | aceptado |
 | [[PLAN-V0.1]] | plan-de-version | aceptado |
-| [[Ruleset mecánico]] | contrato | pendiente de ingreso |
-
-> Los documentos de tipo `guia` no se listan: son navegación, no
-> estructura.
+| [[Project Master Plan]] | plan-de-version | en-revision |
+| [[Ruleset mecánico]] | contrato | aceptado |
 
 ## Registro de riesgos
 
