@@ -20,7 +20,7 @@ El criterio de cierre de Fase 0 y el alcance de la versión en curso viven en
 
 La fase cierra cuando están aprobados los cinco ADRs que consume V0.1:
 ADR-005, ADR-008, ADR-009, ADR-010 y ADR-011. Los documentos restantes
-del índice entran a Fase Foundation como borradores con sus preguntas
+del índice entran a Fase 1 como borradores con sus preguntas
 abiertas declaradas.
 
 Criterio anterior — "todos los documentos de este índice en estado
@@ -100,10 +100,15 @@ Orden en que deben cerrarse los ADRs pendientes. No se altera sin ADR.
 1. Contrato de agente — cerrado por ADR-003
 2. Modelo de control: autonomía y Gates — cerrado por ADR-004
 3. Capa de verificación y Acceptance Criteria — cerrado por ADR-005
-4. Planos de conocimiento
-5. Modelo de capas de la arquitectura
-6. Primer corte funcional de V1
-7. Secuencia de fases del roadmap
-8. Identidad y permisos de agentes
+4. Planos de conocimiento — cerrado por ADR-011
+5. Primer corte funcional de V1 — ADR-008, pendiente
+6. Identidad y permisos de agentes — ADR-009, pendiente
+7. Modelo de costo y presupuesto — ADR-010, pendiente
+8. Modelo de capas de la arquitectura — pendiente, diferido
+9. Secuencia de fases del roadmap — pendiente, diferido
 
-Technology Stack e Infrastructure quedan bloqueados hasta que 1 a 6 estén aprobados.
+Los puntos 1 a 7 son los que cierran Fase 0 según [[PLAN-V0.1]].
+Los puntos 8 y 9 se difieren: no los consume V0.1.
+
+Technology Stack e Infrastructure quedan bloqueados hasta que los
+puntos 1 a 7 estén aprobados.
