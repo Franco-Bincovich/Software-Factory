@@ -1,13 +1,24 @@
 # software-factory-core
 
-Piezas de runtime de V0.1: el verificador estructural de Planes de Trabajo (T7)
-y el Operational State (T13).
+Piezas de runtime de V0.1. Seis tareas del Bloque B de PLAN-V0.1:
+
+| Tarea | Pieza | Módulo |
+|---|---|---|
+| T7 | Verificador estructural | `src/verificador.py` |
+| T8 | Formulario de Intake | `src/intake.py` |
+| T10 | Cargador de Agent Definition | `src/agent_loader.py` |
+| T11 | Motor de Gates | `src/gates.py` |
+| T12 | Contador de presupuesto | `src/presupuesto.py` |
+| T13 | Operational State | `src/operational_state.py` |
+
+Las piezas no están cableadas entre sí: encadenarlas es T14.
 
 ```
 schema/     esquema JSON del Plan de Trabajo
-src/        el verificador y el almacén de eventos
+src/        las seis piezas
+templates/  la plantilla de pedido
 fixtures/   el pedido base y los seis planes de prueba
-tests/      los tests de ambas piezas
+tests/      un archivo por pieza
 docs/       las especificaciones
 ```
 
@@ -63,6 +74,105 @@ válido y en 1 si no lo es.
 Evalúa las siete reglas siempre y devuelve la lista completa; no corta en el
 primer incumplimiento. Si el plan no valida contra el esquema devuelve regla `0`
 y no evalúa el resto.
+
+## Formulario de Intake (T8)
+
+Punto único de ingreso de pedidos. Es un mecanismo, no una Agent Definition: no
+interpreta, no completa, no infiere. Valida y registra. La interpretación de
+pedidos difusos llega en V0.2 como Intake Agent.
+
+La especificación completa está en [`docs/T8-spec.md`](docs/T8-spec.md).
+
+Se parte de [`templates/pedido.template.json`](templates/pedido.template.json),
+que trae los seis campos vacíos: qué se quiere, para qué, qué no entra, y los
+tres techos. Los términos de `alcance_excluido` conviene escribirlos como uno
+espera verlos en un plan —`"interfaz gráfica"`, no `"nada visual"`—, porque es
+contra esa lista que T7 evalúa su regla 5.
+
+```
+./.venv/bin/python src/intake.py --pedido mi-pedido.json
+```
+
+Imprime el `run_id` y termina en 0 si el pedido entra. Si no, imprime cada
+rechazo con su campo y su motivo, y termina en 1.
+
+**El rechazo ocurre antes de generar el `run_id`.** Un pedido inválido no
+consume nada y no deja corrida abierta: cero eventos escritos. No abre el Gate
+de entrada, que es T11.
+
+## Cargador de Agent Definition (T10)
+
+Lee una Agent Definition desde el Vault, verifica que cumpla los trece campos de
+ADR-003 y se niega a arrancar si falta alguno. No es un validador opcional: es
+la puerta por la que un agente pasa de documento a instancia ejecutable.
+
+La especificación completa está en [`docs/T10-spec.md`](docs/T10-spec.md).
+
+El frontmatter lleva los parámetros operativos y el cuerpo lleva la norma. **El
+cuerpo manda:** si los techos del frontmatter y los del campo 8 no coinciden, la
+carga falla nombrando ambos valores y no elige ninguno.
+
+```python
+from agent_loader import cargar
+
+d = cargar(".../03 - Agent Framework/Requirement Agent.md")
+d.agent_id, d.techo_costo_usd, d.herramientas, d.vault_escritura
+```
+
+No expone el texto del cuerpo: el cuerpo es la norma que una persona aprueba y
+el runtime opera sobre los parámetros. No escribe ningún evento — el módulo ni
+siquiera conoce al Operational State.
+
+## Motor de Gates (T11)
+
+Frena una corrida y espera una decisión humana. No decide nada: abre, bloquea,
+registra la resolución y devuelve el control.
+
+La especificación completa está en [`docs/T11-spec.md`](docs/T11-spec.md).
+
+```
+./.venv/bin/python src/gates.py --listar
+./.venv/bin/python src/gates.py --resolver <run_id> --gate entrada --decision aprobado
+```
+
+Cuatro restricciones, cada una con error explícito: no se resuelve un Gate que
+no está abierto, no se resuelve dos veces, no se abre el de salida sin el de
+entrada aprobado, y no se abren dos del mismo tipo en una corrida. Rechazar
+exige motivo; aprobar no. El actor de `gate_resuelto` es siempre `CEO`.
+
+**Un Gate abierto bloquea la corrida hasta que una persona lo resuelva.** No hay
+aprobación automática por el paso del tiempo, y esa ausencia es deliberada: no
+existe parámetro, constante, rama ni comentario que la contemple, y un test lo
+verifica por inspección del módulo. Si alguna vez se decide lo contrario, será
+por un ADR que reemplace a ADR-004 — no "por si acaso".
+
+## Contador de presupuesto (T12)
+
+Mide el consumo de una corrida contra sus tres techos. Mide durante, no al
+final: un techo que se verifica cuando la corrida terminó no es un techo, es una
+estadística.
+
+La especificación completa está en [`docs/T12-spec.md`](docs/T12-spec.md).
+
+```python
+from presupuesto import consumo, registrar_consumo, verificar
+
+registrar_consumo(store, run, 0.5)      # un delta, no el acumulado
+consumo(store, run)                     # {costo, tiempo_min, iteraciones}
+verificar(store, run, definicion)       # None | TechoAlcanzado
+```
+
+El costo es la suma de los deltas. Las iteraciones son la cantidad de eventos
+`verificacion_ejecutada`. El tiempo es el de reloj desde `run_iniciada`
+**menos** las ventanas de espera de Gates: esperar a un humano no consume
+presupuesto, y un Gate todavía sin resolver descuenta desde que se abrió hasta
+ahora. Si dos techos se alcanzan juntos, `TechoAlcanzado` los nombra a ambos.
+
+`verificar` no escribe ningún evento y no corta: devuelve el veredicto y quien
+lo recibe detiene la corrida y emite `run_cortada`, para que la responsabilidad
+de cortar quede en un solo lugar. **Elevar un techo no está implementado**:
+es cambiar un parámetro de la Agent Definition y relanzar. Modificarlo con la
+corrida viva permitiría que el límite ceda bajo presión.
 
 ## Operational State (T13)
 
@@ -123,8 +233,17 @@ CEO.**
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Dieciocho tests. Nueve de T7: uno por cada uno de los seis fixtures y tres sobre
-la forma de la salida. Cada test de fixture comprueba que se dispara exactamente
-la regla sembrada y ninguna otra; el del plan limpio comprueba cero
-incumplimientos. Nueve de T13, uno por cada fila de su criterio de aceptación,
-todos contra una base temporal que se destruye al terminar.
+Sesenta tests, uno por cada fila de los criterios de aceptación de las seis
+tareas:
+
+| Archivo | Tests | Cubre |
+|---|---|---|
+| `test_verificador.py` | 9 | los seis fixtures de T7 y tres sobre la forma de la salida |
+| `test_intake.py` | 9 | el criterio de aceptación de T8 |
+| `test_agent_loader.py` | 10 | el criterio de aceptación de T10 |
+| `test_gates.py` | 11 | el criterio de aceptación de T11 |
+| `test_presupuesto.py` | 12 | el criterio de aceptación de T12 |
+| `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
+
+Todo lo que toca el Operational State corre contra una base temporal que se
+destruye al terminar. La base real nunca se abre desde los tests.
