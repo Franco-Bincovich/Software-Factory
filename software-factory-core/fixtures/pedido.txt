@@ -1,0 +1,1 @@
+Herramienta que lee un CSV de altas de empleados y reporta qué filas no se pueden importar. No incluye: interfaz gráfica, conexión al sistema viejo.
