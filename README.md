@@ -10,16 +10,18 @@ Piezas de runtime de V0.1. Seis tareas del Bloque B de PLAN-V0.1:
 | T11 | Motor de Gates | `src/gates.py` |
 | T12 | Contador de presupuesto | `src/presupuesto.py` |
 | T13 | Operational State | `src/operational_state.py` |
+| T14 | Armazón de ejecución | `src/grafo.py` · `correr.py` |
 
-Las piezas no están cableadas entre sí: encadenarlas es T14.
+T14 las encadena: es lo que hace que exista una corrida.
 
 ```
 schema/     esquema JSON del Plan de Trabajo
-src/        las seis piezas
+src/        las siete piezas
 templates/  la plantilla de pedido
 fixtures/   el pedido base y los seis planes de prueba
 tests/      un archivo por pieza
 docs/       las especificaciones
+correr.py   la CLI de una corrida
 ```
 
 ## Verificador estructural (T7)
@@ -33,13 +35,20 @@ La especificación completa está en [`docs/T7-spec.md`](docs/T7-spec.md).
 
 ## Requisitos
 
-Python 3.9 o superior y `jsonschema`. Es la única dependencia fuera de la
-librería estándar.
+Python 3.12 y tres dependencias directas, declaradas con versión exacta en
+`requirements.txt`: `jsonschema` para el esquema del Plan de Trabajo, y
+`langgraph` más `langgraph-checkpoint-sqlite` para el armazón de ejecución de
+T14 —LangGraph es el coordinador que fija ADR-006, y la versión se fija exacta
+por su punto 7—.
 
 ```
-python3 -m venv .venv
-./.venv/bin/pip install jsonschema
+python3.12 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
 ```
+
+LangGraph arrastra `langchain-core` como dependencia transitiva. Está en el
+árbol y no se usa: ADR-006 punto 8 prohíbe programar contra LangChain, no
+tenerlo instalado.
 
 ## Cómo se corre
 
@@ -227,14 +236,47 @@ procedimiento de respaldo se declara en Infrastructure, documento todavía
 bloqueado. Hasta entonces **el respaldo es manual y es responsabilidad del
 CEO.**
 
+## Armazón de ejecución (T14)
+
+La pieza que conecta a las otras seis y hace que exista una corrida. No agrega
+lógica de negocio: T10 valida la definición, T8 valida el pedido, T12 mide y
+corta, T11 abre y registra Gates, T7 verifica, T13 persiste. T14 los ordena con
+un grafo de LangGraph, según ADR-006.
+
+La especificación completa está en [`docs/T14-spec.md`](docs/T14-spec.md).
+
+**Dos fases, no una.** Cargar la definición, validar el pedido e ingresarlo
+ocurren **antes** del grafo: el `run_id` que devuelve el Intake es el `thread_id`
+con el que LangGraph indexa el checkpoint, y una definición o un pedido
+inválidos tienen que fallar sin escribir un solo evento.
+
+```
+./.venv/bin/python correr.py --pedido pedido.json --definicion "…/Requirement Agent.md"
+./.venv/bin/python correr.py --reanudar <run_id>
+```
+
+Una corrida nueva avanza hasta el primer Gate, imprime el `run_id` y **termina
+el proceso**. El Gate se resuelve con la CLI de T11 y recién ahí se reanuda. Ese
+ciclo es deliberado: un proceso vivo esperando a una persona durante horas
+invita a ponerle un timeout, y ADR-004 lo prohíbe.
+
+El productor es inyectable —`producir_fn(pedido, plan_anterior, incumplimientos,
+contexto_vault)`— para que los tests pongan planes predecibles y la conexión con
+el modelo real llegue en T15 sin tocar el armazón. Hoy `correr.py` inyecta un
+stub que arma un plan mínimo que pasa T7.
+
+El checkpointer es SQLite y vive en `software-factory-state/checkpointer/`,
+**separado de `factory.db`**. Uno es mutable por diseño y el otro inmutable por
+diseño: es el punto 4 de ADR-006 y no se fusionan.
+
 ## Cómo se corren los tests
 
 ```
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Sesenta tests, uno por cada fila de los criterios de aceptación de las seis
-tareas:
+Setenta y dos tests, uno por cada fila de los criterios de aceptación de las
+siete tareas:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -244,6 +286,7 @@ tareas:
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
 | `test_presupuesto.py` | 12 | el criterio de aceptación de T12 |
 | `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
+| `test_grafo.py` | 12 | el criterio de aceptación de T14 |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.

@@ -170,6 +170,28 @@ checkpointer para entender qué pasó, T14 no está terminado.
 
 ---
 
+## Notas de implementación
+
+Tres puntos que la spec no prescribe y que se resuelven en código:
+
+1. **Evento de apertura de corrida.** El nodo `intake` debe registrar el primer
+   evento en el Operational State (vía T13) antes de que la corrida avance. Sin
+   ese evento, la apertura no queda trazada y la prueba de trazabilidad falla.
+   Llamada esperada: `append(run_id, "corrida_abierta", "requirement-agent", {pedido})`.
+
+2. **`verificar_techos` como nodo propio.** El diagrama lo muestra como arista
+   condicional, pero la decisión de cortar por techo debe quedar registrada como
+   evento en T13 *antes* de llegar a `escalar`. Implementar como nodo de una
+   línea que llama a T12 y rutea; si corta, registra
+   `append(run_id, "techo_alcanzado", "requirement-agent", {techo, valor})`.
+
+3. **`texto_rastreable` en el estado del grafo.** Ningún nodo lo puebla según la
+   spec. Si es el output legible del plan, usar `plan` directamente. Si cumple
+   otra función, documentarla en el código. Si no cumple ninguna, eliminarlo del
+   estado.
+
+---
+
 ## Fuera de alcance
 
 No implementa el Developer Agent ni ningún otro. No ejecuta el plan producido: en
