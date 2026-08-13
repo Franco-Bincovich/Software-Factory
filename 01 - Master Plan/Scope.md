@@ -263,8 +263,8 @@ límites.
 
 ## Impacto en otros documentos
 
-**Vision** — este documento operativiza su destino de "la gran mayoría de los
-pedidos". **Roadmap** — el inventario de "todavía no" se corresponde con sus
-versiones. **ADR-004** — los dos criterios del piso que bloquean la
-autoconcesión de capacidad. **Agent Framework** — la Agent Factory hereda el
+[[Vision]] — este documento operativiza su destino de "la gran mayoría de los
+pedidos". [[Roadmap]] — el inventario de "todavía no" se corresponde con sus
+versiones. [[ADR-004]] — los dos criterios del piso que bloquean la
+autoconcesión de capacidad. [[Agent Framework]] — la Agent Factory hereda el
 límite de autoconstrucción.

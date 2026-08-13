@@ -184,6 +184,6 @@ Todo lo demás del proyecto es consecuencia de esa frase.
 
 ## Impacto en otros documentos
 
-**Objectives** — traduce estos modos de falla en métricas. **Scope** — declara
-qué entra y qué no. **Roadmap** — el camino interno-primero deriva de acá.
-**ADR-008** — el corte de V1 es la primera parada de este destino.
+[[Objectives]] — traduce estos modos de falla en métricas. [[Scope]] — declara
+qué entra y qué no. [[Roadmap]] — el camino interno-primero deriva de acá.
+[[ADR-008]] — el corte de V1 es la primera parada de este destino.

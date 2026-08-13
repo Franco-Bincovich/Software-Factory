@@ -159,6 +159,6 @@ librería estándar; cada agregado se declara y se fija la versión exacta.
 
 ## Impacto en otros documentos
 
-**Standards** — desarrolla las convenciones concretas que este documento asume.
-**PLAN-V0.1** — es la aplicación de esta metodología a la primera versión.
-**Decision Making** — desarrolla cómo se toma y registra una decisión.
+[[Standards]] — desarrolla las convenciones concretas que este documento asume.
+[[PLAN-V0.1]] — es la aplicación de esta metodología a la primera versión.
+[[Decision Making]] — desarrolla cómo se toma y registra una decisión.

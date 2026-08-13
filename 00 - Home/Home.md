@@ -6,7 +6,7 @@ aprobado: 2026-08-07
 version: 1.0
 owner: CEO
 adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008, ADR-009, ADR-010, ADR-011, ADR-012]
-actualizado: 2026-08-07
+actualizado: 2026-08-11
 ---
 
 # Software Factory Autónoma
@@ -21,7 +21,7 @@ Este archivo es navegación. La estructura oficial está en
 - [[Roadmap]] — secuencia de versiones, qué habilita cada una y cómo se sabe que terminó
 - [[Architecture]] — qué capas componen la fábrica, qué hace cada una y qué no puede hacer
 - [[PLAN-V0.1]] — plan de versión: alcance, timebox y criterio de terminación de V0.1
-- [[Runbook V0.1]] — cómo se opera la fábrica una vez terminado T14
+- [[Runbook V0.1]] — cómo se opera la fábrica, ahora que T14 está construido
 - [[Contrato del Plan de Trabajo]] — estructura y reglas de validez del Plan de Trabajo, salida del Requirement Agent
 - [[Requirement Agent]] — Agent Definition: los trece campos de ADR-003 para el primer agente de la fábrica
 - [[README]] — convenciones del vault

@@ -4,8 +4,8 @@ tipo: plan-de-version
 estado: aceptado
 aprobado: 2026-08-06
 version: 1.0
-dueño: Franco Bincovich Granada
-fecha: 2026-08-06
+owner: Franco Bincovich Granada
+actualizado: 2026-08-11
 aliases: [PLAN-V0.1, V0.1]
 ---
 
@@ -44,7 +44,7 @@ consumidores.
 
 ### Entra en V0.1
 
-- El **Requirement Agent**: recibe un pedido estructurado y produce un plan de
+- El [[Requirement Agent]]: recibe un pedido estructurado y produce un plan de
   trabajo con tareas y criterios de aceptación.
 - El **formulario de Intake** como mecanismo de ingreso, no como Agent
   Definition.
@@ -129,7 +129,15 @@ bloquea nada.
 | **T11 — Motor de Gates** | Gate de entrada — se aprueba pedido y techos antes de gastar. Corresponde al criterio 6 del piso de ADR-004. Gate de salida — se aprueba el plan producido. **No corresponde a ningún criterio del piso: es un Gate propio del agente**, de los que ADR-004 permite agregar, y se declara como tal en la Agent Definition. Vencimiento nunca es aprobación. Cerrado. Implementado en software-factory-core/src/gates.py. | Un Gate sin responder no deja avanzar. Queda registrado quién aprobó y cuándo | T8 |
 | **T12 — Contador de presupuesto** | Mide consumo real contra los **tres techos** que exige el campo 8 de ADR-003 —costo, tiempo e iteraciones— y corta al alcanzar cualquiera de ellos. Cerrado. Implementado en software-factory-core/src/presupuesto.py. | Con cada uno de los tres techos puesto artificialmente bajo, la corrida se corta y el registro declara cuál se alcanzó | T4, T5 |
 | **T13 — Registro de corrida** | Un archivo por corrida: qué Agent Definition, qué pedido, qué consumió, qué produjo, qué Gates hubo, quién aprobó. Cerrado. Implementado en software-factory-core/src/operational_state.py. | Se reconstruye qué pasó leyendo solo el registro, sin mirar la consola | T5 |
-| **T14 — Armazón LangGraph** | Grafo de un nodo con los Gates alrededor | Corre de punta a punta encadenando T10 a T13 | T10, T11, T12, T13 |
+| **T14 — Armazón LangGraph** | Grafo de un nodo con los Gates alrededor. Cerrado. Implementado en software-factory-core/src/grafo.py, con la CLI de corrida en software-factory-core/correr.py. | Corre de punta a punta encadenando T10 a T13 | T10, T11, T12, T13 |
+
+**Bloque B cerrado el 2026-08-11.** Las nueve tareas tienen dueño: T6 y T9 por
+documentos del vault —[[Contrato del Plan de Trabajo]] y [[Requirement Agent]]—,
+y T7, T8 y T10 a T14 por módulos de software-factory-core, con setenta y dos
+tests que cubren fila por fila los criterios de aceptación de las siete piezas.
+
+El productor del modelo todavía no está conectado: T14 lo recibe inyectado y hoy
+corre con un stub. Conectarlo es la primera corrida real, que es T15.
 
 ---
 

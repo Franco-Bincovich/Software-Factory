@@ -5,7 +5,7 @@ estado: aceptado
 aprobado: 2026-08-07
 version: 1.1
 owner: CEO
-actualizado: 2026-08-07
+actualizado: 2026-08-11
 adr: [ADR-000, ADR-001, ADR-002, ADR-012]
 aliases: [Standards, Estándares]
 ---
@@ -73,7 +73,7 @@ Campos obligatorios en todo documento vinculante, en este orden:
 ```yaml
 titulo:        # excepto ADRs, cuyo H1 es el título
 tipo:          # uno de los seis de ADR-012
-estado:        # propuesto | borrador | aceptado | reemplazado
+estado:        # propuesto | borrador | aceptado | reemplazado | retirado | archivado
 aprobado:      # fecha, vacío mientras esté propuesto
 version:
 owner:
@@ -214,7 +214,7 @@ que no es información.
 
 ## Impacto en otros documentos
 
-**ADR-012** — este documento aplica su taxonomía. **ADR-002** — desarrolla sus
-convenciones de estructura. **Development Methodology** — asume estas
-convenciones. **Technology Stack** (bloqueado) — heredará la sección de estilo de
+[[ADR-012]] — este documento aplica su taxonomía. [[ADR-002]] — desarrolla sus
+convenciones de estructura. [[Development Methodology]] — asume estas
+convenciones. [[Technology Stack]] (bloqueado) — heredará la sección de estilo de
 código.

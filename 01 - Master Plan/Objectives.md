@@ -194,7 +194,7 @@ razones.
 
 ## Impacto en otros documentos
 
-**Vision** — este documento traduce sus cuatro modos de falla en métricas.
-**ADR-010** — el consumo instrumentado es el insumo de O2. **ADR-008** — la
-tensión del objetivo laboral apunta a su corte de V1. **Roadmap** — si se elige
+[[Vision]] — este documento traduce sus cuatro modos de falla en métricas.
+[[ADR-010]] — el consumo instrumentado es el insumo de O2. [[ADR-008]] — la
+tensión del objetivo laboral apunta a su corte de V1. [[Roadmap]] — si se elige
 el camino 2, hay que agregarle una versión.

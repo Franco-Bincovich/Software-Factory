@@ -42,7 +42,7 @@ notas de carpeta se nombran `<Carpeta> - nota.md`.
 ---
 titulo:        # excepto ADRs, cuyo H1 es el título
 tipo:          # adr | norma | contrato | agent-definition | plan-de-version | guia
-estado:        # propuesto | borrador | aceptado | reemplazado
+estado:        # propuesto | borrador | aceptado | reemplazado | retirado | archivado
 aprobado:      # fecha, vacío mientras esté propuesto
 version: 1.0
 owner: CEO
@@ -53,7 +53,8 @@ aliases: []
 ```
 
 Los seis valores de `tipo:` son lista cerrada según ADR-012: los cinco primeros
-obligan, `guia` no. El orden de los campos y los cuatro estados los fija Standards.
+obligan, `guia` no. El orden de los campos lo fija Standards; los seis estados son
+los de la sección "Estados de un documento".
 
 El frontmatter es obligatorio para todo documento ubicado en las carpetas numeradas
 `00` a `07`. `README.md`, los reportes de raíz y el material de `99 - Archive` son
@@ -67,11 +68,19 @@ una vez aprobados: se superan con un ADR nuevo que los referencia.
 retroactivamente. Un dato que quedó desactualizado se cierra con una sección nueva,
 nunca editando la anterior.
 
-## Estados de un ADR
+## Estados de un documento
 
-`propuesto` → `aprobado` → `superado por ADR-NNN`
+Lista cerrada. Aplica a todo documento del vault, no solo a los ADRs.
 
-Un ADR rechazado se conserva con estado `rechazado`. No se borra.
+| Estado | Significado |
+|---|---|
+| `propuesto` | Documento en discusión. No obliga. |
+| `borrador` | Documento en elaboración. No obliga. |
+| `aceptado` | Documento aprobado y vigente. Obliga según su tipo. |
+| `reemplazado` | Sustituido por una versión posterior o por otro documento. Se conserva como referencia. Indicar el sucesor. |
+| `retirado` | Documento que fue normativo y ya no lo es. Se conserva como referencia histórica. |
+| `archivado` | Material movido a `99 - Archive/`. Sin valor normativo. |
 
-Un ADR en estado `propuesto` se edita libremente. La inmutabilidad rige desde que pasa
-a `aprobado`: a partir de ahí solo se supera con un ADR posterior.
+`propuesto` y `borrador` son estados de trabajo: el documento se edita libremente. La
+inmutabilidad rige desde que pasa a `aceptado`. Un ADR aceptado solo se supera con un
+ADR posterior, y el superado queda en `reemplazado` nombrando a su sucesor.

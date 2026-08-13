@@ -206,6 +206,6 @@ Ninguna.
 
 ## Impacto en otros documentos
 
-**ADR-001** — queda satisfecha la referencia a este archivo, que estaba
-apuntando al vacío. **ADR-002** — la regla de principios ya tiene destino real.
-**Project Master Plan** — el wikilink a Principles pasa a resolver.
+[[ADR-001]] — queda satisfecha la referencia a este archivo, que estaba
+apuntando al vacío. [[ADR-002]] — la regla de principios ya tiene destino real.
+[[Project Master Plan]] — el wikilink a Principles pasa a resolver.

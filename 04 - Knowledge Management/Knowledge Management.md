@@ -159,7 +159,7 @@ siguientes.
 
 ## Impacto en otros documentos
 
-**ADR-011** — queda ejecutada su cláusula "Crea:". **ADR-001** — la separación
-normas/hechos pasa de conceptual a operativa. **Runbook V0.1** — la sección de
-respaldo deriva de acá. **Infrastructure** (bloqueado) — hereda R8 como su
+[[ADR-011]] — queda ejecutada su cláusula "Crea:". [[ADR-001]] — la separación
+normas/hechos pasa de conceptual a operativa. [[Runbook V0.1]] — la sección de
+respaldo deriva de acá. [[Infrastructure]] (bloqueado) — hereda R8 como su
 primera obligación.

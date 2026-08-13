@@ -176,7 +176,7 @@ pregunta correcta es si el análisis cambió o si simplemente cansan.
 
 ## Impacto en otros documentos
 
-**ADR-000** — este documento desarrolla su regla de que las normas viven
-versionadas. **ADR-002** — la estructura de ADRs se apoya en su plantilla.
-**Development Methodology** — la disciplina de construcción asume este ciclo.
-**Project Master Plan** — la Secuencia de decisión es la aplicación concreta.
+[[ADR-000]] — este documento desarrolla su regla de que las normas viven
+versionadas. [[ADR-002]] — la estructura de ADRs se apoya en su plantilla.
+[[Development Methodology]] — la disciplina de construcción asume este ciclo.
+[[Project Master Plan]] — la Secuencia de decisión es la aplicación concreta.

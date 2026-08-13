@@ -109,7 +109,7 @@ se cumple en ejecución y no solo en el papel.
 
 ## Protocolo de traspaso
 
-La unidad que viaja entre agentes es el **Plan de Trabajo**, definido en su propio
+La unidad que viaja entre agentes es el [[Plan de Trabajo]], definido en su propio
 contrato. Sus propiedades relevantes acá:
 
 - Los Acceptance Criteria viajan **adentro** de la tarjeta, no en un documento
@@ -172,7 +172,7 @@ mismas.
 
 ## Impacto en otros documentos
 
-**ADR-003** — queda ejecutada su cláusula "Crea:". **Contrato del Plan de
+[[ADR-003]] — queda ejecutada su cláusula "Crea:". **Contrato del Plan de
 Trabajo** — este documento lo referencia sin reescribirlo. **Requirement Agent**
 — es la primera definición sujeta a este marco. **ADR-007** (diferido) — el
 modelo organizacional se apoyará en la regla de justificación de agentes.

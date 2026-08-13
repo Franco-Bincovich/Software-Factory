@@ -1,11 +1,11 @@
 ---
 titulo: Guía de uso de LangGraph
-tipo: guia
+tipo: norma
 estado: aceptado
 aprobado: 2026-08-07
 version: 1.0
 owner: CEO
-actualizado: 2026-08-07
+actualizado: 2026-08-11
 adr: [ADR-004, ADR-006, ADR-010, ADR-011]
 aliases: [Guía de uso de LangGraph, LangGraph]
 ---
@@ -14,6 +14,12 @@ aliases: [Guía de uso de LangGraph, LangGraph]
 
 Cómo se usa LangGraph **en esta fábrica**. No es documentación del framework:
 es el subconjunto que usamos, con las restricciones que ADR-006 impone.
+
+**Documento vinculante.** Es `tipo: norma` y figura en el índice del
+[[Project Master Plan]]: las cuatro reglas de la sección "Las cuatro reglas de
+esta fábrica" obligan a quien construya T14, no son recomendaciones. Las
+secciones explicativas están para que esas reglas se entiendan, no para
+relativizarlas.
 
 Para la documentación oficial: `docs.langchain.com/oss/python/langgraph`.
 

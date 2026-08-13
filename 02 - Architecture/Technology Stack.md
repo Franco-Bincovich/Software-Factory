@@ -335,8 +335,8 @@ mecánico: un patrón sin reglas verificables es un patrón sin QA.
 
 ## Impacto en otros documentos
 
-**Constitución Técnica** — es la norma de Patrón A; hay que declarar
-explícitamente qué secciones no aplican a B. **Ruleset mecánico** — hoy solo
-cubre A. **Infrastructure** — desarrolla qué necesita cada patrón para correr.
-**Scope** — la tabla de decisión usa el mismo mecanismo de dos registros.
-**ADR-008** — este documento se desbloqueó con su aprobación.
+[[Constitución Técnica]] — es la norma de Patrón A; hay que declarar
+explícitamente qué secciones no aplican a B. [[Ruleset mecánico]] — hoy solo
+cubre A. [[Infrastructure]] — desarrolla qué necesita cada patrón para correr.
+[[Scope]] — la tabla de decisión usa el mismo mecanismo de dos registros.
+[[ADR-008]] — este documento se desbloqueó con su aprobación.

@@ -5,7 +5,7 @@ estado: aceptado
 aprobado: 2026-08-07
 version: 1.0
 owner: CEO
-actualizado: 2026-08-07
+actualizado: 2026-08-11
 adr: [ADR-008, ADR-009, ADR-011]
 aliases: [Infrastructure, Infraestructura]
 ---
@@ -44,6 +44,15 @@ dueño.
 **Hermanas, nunca anidadas.** Anidar el código dentro del vault llenaría el
 historial normativo de commits de implementación. Anidar el estado dentro de un
 repo versionaría los hechos, contra ADR-011.
+
+Dentro de `software-factory-core/` vive el código ejecutable de la fábrica y su
+verificación. `src/` contiene los módulos construidos de V0.1: `verificador.py`
+(T7), `intake.py` (T8), `agent_loader.py` (T10), `gates.py` (T11),
+`presupuesto.py` (T12) y `operational_state.py` (T13), según las rutas que
+declara [[PLAN-V0.1]]. `tests/` contiene la suite que los cubre. `docs/` contiene
+las especificaciones de T7 a T14 —la de T14, el armazón LangGraph, está escrita y
+todavía no implementada—. T9 no tiene módulo acá: es la Agent Definition del
+Requirement Agent y vive en el Vault, que es donde ADR-011 pone las normas.
 
 Dentro de `software-factory-state/` conviven dos archivos con naturalezas
 opuestas: el Operational State, inmutable y autoritativo, y el checkpointer de
@@ -239,8 +248,8 @@ custodia manual deja de escalar.
 
 ## Impacto en otros documentos
 
-**ADR-011** — este documento cumple su exigencia de política de respaldo.
-**Security** — comparte los tres huecos del Deployment Agent. **Technology
+[[ADR-011]] — este documento cumple su exigencia de política de respaldo.
+[[Security]] — comparte los tres huecos del Deployment Agent. **Technology
 Stack** — desarrolla qué necesita cada patrón. **Registro de riesgos** — R8 pasa
 de "sin mitigación" a "mitigación manual declarada"; se cierra del todo cuando el
 respaldo se automatice.

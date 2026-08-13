@@ -1,7 +1,7 @@
 ---
 titulo: Metodología manual (en retiro)
 tipo: guia
-estado: aceptado
+estado: retirado
 aprobado: 2026-08-07
 version: 1.0
 owner: CEO

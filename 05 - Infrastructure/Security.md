@@ -153,7 +153,7 @@ Infrastructure o sin escribir la Agent Definition del Deployment Agent.
 
 ## Impacto en otros documentos
 
-**ADR-009** — este documento lo desarrolla. **ADR-008** — la sección de despliegue
+[[ADR-009]] — este documento lo desarrolla. [[ADR-008]] — la sección de despliegue
 local deriva de él y le agrega los tres huecos que hay que cerrar antes.
-**Constitución Técnica** — referenciada, no duplicada. **Infrastructure**
+[[Constitución Técnica]] — referenciada, no duplicada. [[Infrastructure]]
 (bloqueado) — hereda la custodia de secretos y R8.

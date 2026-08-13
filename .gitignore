@@ -3,3 +3,21 @@
 .obsidian/cache
 .trash/
 .DS_Store
+
+# Obsidian
+.obsidian/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# software-factory-core
+software-factory-core/.venv/
+software-factory-core/__pycache__/
+software-factory-core/.env
+
+# Estado operacional y diagnostico
+software-factory-state/
+vault-diagnostico.md

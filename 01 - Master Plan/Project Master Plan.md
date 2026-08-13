@@ -1,11 +1,12 @@
 ---
+titulo: Project Master Plan
 tipo: norma
 estado: aceptado
 aprobado: 2026-08-07
 version: 1.0
 owner: CEO
 adr: [ADR-000, ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-012]
-actualizado: 2026-08-07
+actualizado: 2026-08-11
 ---
 
 # Project Master Plan
@@ -21,14 +22,18 @@ El criterio de cierre de Fase 0 y el alcance de la versión en curso viven en
 **Fase 0 — Diseño Estratégico.** Cerrada el 2026-08-07.
 
 Los cinco ADRs que consume V0.1 están aprobados: ADR-005, ADR-008,
-ADR-009, ADR-010 y ADR-011. Los diecisiete documentos del índice
+ADR-009, ADR-010 y ADR-011. Los dieciocho documentos del índice
 existen como archivo.
 
 Criterio de cierre según [[PLAN-V0.1]]: capacidad operativa demostrada,
 no cantidad de documentos aprobados.
 
 ADRs aprobados: 12 (ADR-000 a ADR-006, ADR-008 a ADR-012).
-Fase siguiente: construcción de V0.1, tarea T14 pendiente.
+
+**Bloque B de V0.1 cerrado el 2026-08-11**, T14 incluido: el armazón de
+ejecución corre de punta a punta. Fase siguiente: Bloque C —T15 primera corrida
+real, T16 ejecución manual del plan, T17 corrida de control—, que es lo que
+decide si V0.1 terminó según [[PLAN-V0.1]].
 
 ## Índice
 
@@ -50,6 +55,7 @@ Fase siguiente: construcción de V0.1, tarea T14 pendiente.
 |---|---|---|
 | [[Architecture]] | aceptado | ADR pendiente: modelo de capas |
 | [[Technology Stack]] | aceptado | [[ADR-004]], [[ADR-006]], [[ADR-008]], [[ADR-011]] |
+| [[Guía de uso de LangGraph]] | aceptado | [[ADR-004]], [[ADR-006]], [[ADR-010]], [[ADR-011]] |
 
 ### 03 - Agent Framework
 
@@ -115,7 +121,7 @@ Riesgos vivos del proyecto. Se actualiza al cerrar cada ADR.
 | R1 | Verificación producida por el mismo tipo de sistema que produce el código: la autonomía se vuelve confianza ciega. | Alto | Mitigado parcialmente — ADR-005. Verificación sustantiva diferida a V0.3. |
 | R2 | Costo de ejecución sin techo por agente ni por proyecto. | Alto | Mitigado — ADR-010. |
 | R3 | El CEO como único aprobador de todos los Gates lo convierte en cuello de botella por diseño. | Alto | Mitigado parcialmente — ADR-004. Persiste mientras exista un solo rol humano aprobador. |
-| R4 | Alcance abierto ("cualquier tipo de sistema") sin primer corte funcional. | Alto | Abierto — mitigación en ADR de primer corte |
+| R4 | Alcance abierto ("cualquier tipo de sistema") sin primer corte funcional. | Alto | Mitigado — ADR-008. |
 | R5 | Bootstrapping: la plataforma construida por sus propios agentes genera dependencia circular. | Medio | Abierto |
 | R6 | Agent Factory priorizada antes de operar los Core Agents de punta a punta. | Medio | Abierto |
 | R7 | Aislamiento de datos entre proyectos de terceros no definido. | Medio | Abierto |
@@ -135,9 +141,12 @@ Orden en que deben cerrarse los ADRs pendientes. No se altera sin ADR.
 8. Modelo de capas de la arquitectura — pendiente, diferido
 9. Secuencia de fases del roadmap — pendiente, diferido
 10. Taxonomía documental — cerrado por ADR-012
+11. Modelo organizacional de agentes en Departamentos y Roles — pendiente,
+    diferido a V0.3. Es ADR-007. Contexto en [[Agent Framework]], que lo declara
+    fuera de su alcance; [[ADR-008]] confirma que V1 no lo necesita.
 
 Los puntos 1 a 7 son los que cierran Fase 0 según [[PLAN-V0.1]].
-Los puntos 8 y 9 se difieren: no los consume V0.1.
+Los puntos 8, 9 y 11 se difieren: no los consume V0.1.
 
 Technology Stack e Infrastructure quedaron desbloqueados el 2026-08-07,
 al cerrarse los puntos 1 a 7.

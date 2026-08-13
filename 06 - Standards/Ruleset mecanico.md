@@ -213,7 +213,7 @@ declarado ahí. Es lo que evita que el ruleset se vuelva algo que todos ignoran.
 
 ## Impacto en otros documentos
 
-**Constitución Técnica** — es su fuente. **Verification** — este ruleset es la
+[[Constitución Técnica]] — es su fuente. [[Verification]] — este ruleset es la
 verificación estructural aplicada a código, análoga a las siete reglas del Plan
-de Trabajo. **QA Agent** (V0.3) — lo consume. **Standards** — las convenciones
+de Trabajo. **QA Agent** (V0.3) — lo consume. [[Standards]] — las convenciones
 del proyecto interno; este ruleset es para el software producido.

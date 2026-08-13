@@ -1,48 +1,59 @@
 ---
+titulo: ADR-NNN — Título
+tipo: adr
 estado: propuesto
 aprobado:
 version: 0.1
 owner: CEO
-actualizado: AAAA-MM-DD
+actualizado: 2026-08-11
 adr: []
 aliases: []
 ---
 
 # ADR-NNN — Título
 
+Una línea que diga qué punto de la Secuencia de decisión cierra este ADR, si cierra
+alguno.
+
 ## Contexto
 
 Qué situación obliga a decidir. Hechos, no opiniones. Si hay evidencia en el vault
-o en un reporte, se cita con archivo y ubicación.
+o en un reporte, se cita con archivo y ubicación. Incluye la pregunta concreta que
+este ADR responde: una sola. Si son dos, son dos ADRs.
 
-## Problema
+## Opciones consideradas
 
-La pregunta concreta que este ADR responde. Una sola. Si son dos, son dos ADRs.
+Mínimo dos, cada una con su propia subsección. La opción "no hacer nada" se evalúa
+explícitamente cuando aplica.
 
-## Alternativas evaluadas
+### Opción A — nombre corto
 
-Mínimo dos. Cada una con su costo y su consecuencia. La alternativa "no hacer nada"
-se evalúa explícitamente cuando aplica.
+Qué es, qué cuesta y qué consecuencia trae. Por qué se descarta, si se descarta.
+
+### Opción B — nombre corto
+
+Ídem.
 
 ## Decisión
 
-Qué se decide. En presente y en afirmativo.
+Qué se decide. En presente y en afirmativo. Se numeran los puntos cuando la decisión
+tiene varias partes, para que después se puedan citar como "punto 3 de ADR-NNN".
 
-## Justificación
+### 1. Primer punto de la decisión
 
-Por qué esta y no las otras.
+### 2. Segundo punto de la decisión
 
 ## Consecuencias
 
 Qué se vuelve más fácil y qué se vuelve más difícil a partir de acá.
 Incluye lo negativo: un ADR sin consecuencias negativas está mal escrito.
 
-## Dependencias
+## Decisiones que habilita
 
-**Requiere:** ADRs que debían estar aprobados antes que este.
-**Habilita:** decisiones que ahora se pueden tomar.
-**Bloquea:** decisiones que quedan cerradas mientras este ADR esté vigente.
+Qué queda desbloqueado al aprobarse este ADR: otros ADRs, documentos del vault que
+ya pueden escribirse, tareas de la versión en curso.
 
-## Documentos afectados
+## Decisiones que no resuelve
 
-Qué documentos del vault deben crearse o actualizarse como consecuencia.
+Qué queda explícitamente abierto, y con qué versión o ADR se cierra. Un hueco
+declarado no es una omisión; un hueco callado sí.

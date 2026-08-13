@@ -175,7 +175,7 @@ pasa a tener un sello.
 
 ## Impacto en otros documentos
 
-**ADR-004** — queda ejecutada su cláusula "Crea:". **Agent Framework** — la regla
-de granularidad y el escalamiento se apoyan en este documento. **Runbook V0.1** —
-la operación de Gates deriva de acá. **Requirement Agent** — su Gate de salida se
+[[ADR-004]] — queda ejecutada su cláusula "Crea:". [[Agent Framework]] — la regla
+de granularidad y el escalamiento se apoyan en este documento. [[Runbook V0.1]] —
+la operación de Gates deriva de acá. [[Requirement Agent]] — su Gate de salida se
 declara como propio siguiendo esta norma.

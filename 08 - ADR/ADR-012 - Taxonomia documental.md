@@ -4,7 +4,7 @@ estado: aceptado
 aprobado: 2026-08-07
 version: 1.0
 owner: CEO
-actualizado: 2026-08-07
+actualizado: 2026-08-11
 adr: [ADR-000, ADR-002]
 aliases: [ADR-012]
 ---
@@ -52,7 +52,7 @@ está bien formado.
 | `contrato` | Formato o interfaz que otras piezas deben cumplir | Sí | Contrato del Plan de Trabajo |
 | `agent-definition` | Definición de un agente según ADR-003 | Sí | Requirement Agent |
 | `plan-de-version` | Alcance y criterio de terminación de una versión | Sí | PLAN-V0.1 |
-| `guia` | Material de apoyo. Explica, no decide | **No** | Guía de uso de LangGraph, Runbook V0.1 |
+| `guia` | Material de apoyo. Explica, no decide | **No** | Runbook V0.1 |
 
 Ampliar la lista requiere ADR. Es deliberado: la facilidad para inventar
 categorías es lo que produjo el problema.
@@ -79,7 +79,7 @@ diecisiete de diseño estratégico.
 
 Se organiza en dos partes:
 
-- **Documentos de diseño estratégico** — los diecisiete originales.
+- **Documentos de diseño estratégico** — los dieciocho originales.
 - **Artefactos vinculantes** — ADRs, contratos, Agent Definitions y planes de
   versión.
 

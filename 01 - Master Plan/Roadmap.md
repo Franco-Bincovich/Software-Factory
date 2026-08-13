@@ -156,6 +156,6 @@ existe para dar: la posibilidad de terminar.
 
 ## Impacto en otros documentos
 
-**PLAN-V0.1** — es el desarrollo detallado del primer peldaño. **ADR-008** —
+[[PLAN-V0.1]] — es el desarrollo detallado del primer peldaño. [[ADR-008]] —
 define el corte de V1 y este documento lo ordena en el tiempo. **Project Master
 Plan** — el criterio de cierre de Fase 0 apunta acá.

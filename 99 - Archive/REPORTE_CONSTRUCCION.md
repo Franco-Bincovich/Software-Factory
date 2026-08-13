@@ -1,3 +1,10 @@
+---
+titulo: Reporte de construcción del vault
+tipo: reporte
+estado: archivado
+actualizado: 2026-08-11
+---
+
 # Reporte de construcción del vault
 
 Fecha: 2026-07-31 · Alcance: Tareas 1 a 7 del prompt de construcción.
@@ -412,8 +419,9 @@ el mismo trabajo.** Conviene que fijes la identidad y decidas si reescribís los
 últimos tres commits.
 
 **Estilo del enlace a ADR-003.** Se agregó `[[ADR-003]]` literal, como indicaba el
-prompt. Los otros tres de esa lista usan el nombre completo: `[[ADR-000 - Fundacion
-del conocimiento]]`. Funciona igual —el alias resuelve— pero la lista quedó con dos
+prompt. Los otros tres de esa lista usan el nombre completo:
+`[[ADR-000 - Fundacion del conocimiento]]`. Funciona igual —el alias resuelve— pero
+la lista quedó con dos
 estilos mezclados. No lo uniformé.
 
 **`Archive (archivado).md` y la convención de notas de carpeta.** La nueva convención

@@ -4,7 +4,7 @@ estado: aceptado
 aprobado: 2026-08-06
 version: 1.0
 owner: CEO
-actualizado: 2026-08-01
+actualizado: 2026-08-11
 adr: [ADR-000, ADR-001]
 aliases: [ADR-002]
 ---
@@ -68,8 +68,8 @@ justifica, mediante ADR.
 
 **Contenidos absorbidos, sin documento propio en esta fase:**
 
-- *KPIs* → sección de `Verification`. Las métricas que importan salen de criterios
-  verificados, no de un documento aparte.
+- *KPIs* → sección de `Objectives`. Las métricas operativas de la fábrica viven ahí,
+  junto a los objetivos que miden, no en un documento aparte.
 - *Quality* → repartido entre `Verification` (qué se comprueba) y `Standards` (qué se
   exige).
 - *Risks* → sección de `Project Master Plan`. Un registro de riesgos vivo, no un

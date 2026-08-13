@@ -185,7 +185,7 @@ contrato fija que debe existir una forma estructurada, no cuál.
 
 ## Impacto en otros documentos
 
-**Agent Framework** (pendiente): este contrato es su insumo directo y debe
-absorberlo o referenciarlo, no reescribirlo. **PLAN-V0.1**: cierra T6 y define el
-alcance exacto de T7. **ADR-008**: el corte de V1 puede ahora definir "entregado"
+[[Agent Framework]] (pendiente): este contrato es su insumo directo y debe
+absorberlo o referenciarlo, no reescribirlo. [[PLAN-V0.1]]: cierra T6 y define el
+alcance exacto de T7. [[ADR-008]]: el corte de V1 puede ahora definir "entregado"
 en términos de unidades de trabajo con criterios cumplidos.

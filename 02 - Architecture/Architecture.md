@@ -212,8 +212,8 @@ fábrica es un agente con gobierno, no una cadena.
 
 ## Impacto en otros documentos
 
-**Technology Stack** (bloqueado) — hereda las capacidades que cada capa exige, sin
-tecnología asignada. **Infrastructure** (bloqueado) — hereda R8 y el requisito de
-respaldo del Operational State. **Agent Framework** — desarrolla la capa de
-agentes. **Verification**, **Autonomy and HITL**, **Knowledge Management** —
+[[Technology Stack]] (bloqueado) — hereda las capacidades que cada capa exige, sin
+tecnología asignada. [[Infrastructure]] (bloqueado) — hereda R8 y el requisito de
+respaldo del Operational State. [[Agent Framework]] — desarrolla la capa de
+agentes. [[Verification]], [[Autonomy and HITL]], [[Knowledge Management]] —
 desarrollan sus capas respectivas.
