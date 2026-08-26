@@ -252,6 +252,7 @@ inválidos tienen que fallar sin escribir un solo evento.
 
 ```
 ./.venv/bin/python correr.py --pedido pedido.json --definicion "…/Requirement Agent.md"
+./.venv/bin/python correr.py --pedido pedido.json --definicion "…/Requirement Agent.md" --stub
 ./.venv/bin/python correr.py --reanudar <run_id>
 ```
 
@@ -261,9 +262,20 @@ ciclo es deliberado: un proceso vivo esperando a una persona durante horas
 invita a ponerle un timeout, y ADR-004 lo prohíbe.
 
 El productor es inyectable —`producir_fn(pedido, plan_anterior, incumplimientos,
-contexto_vault)`— para que los tests pongan planes predecibles y la conexión con
-el modelo real llegue en T15 sin tocar el armazón. Hoy `correr.py` inyecta un
-stub que arma un plan mínimo que pasa T7.
+contexto_vault)`— para que los tests pongan planes predecibles y para que la
+conexión con el modelo real de T15 entrara sin tocar el armazón. Hoy `correr.py`
+inyecta **el productor real por defecto**: cada iteración es una invocación al
+modelo contra la API de Anthropic, con la credencial de `.env`.
+
+`--stub` es lo que hay que pedir explícitamente para lo otro: reemplaza al
+productor por uno de relleno que arma un plan mínimo que pasa T7 sin invocar a
+nadie. Sirve para ejercitar el armazón de punta a punta sin gastar, y no exige
+credencial.
+
+**Una corrida sin `--stub` gasta dinero real.** Cada iteración se le factura a
+la cuenta dueña de la `ANTHROPIC_API_KEY`, y una corrida que corrige el plan
+itera más de una vez. El techo de costo de ADR-010 acota cuánto puede gastar una
+corrida antes de escalar; no evita el gasto.
 
 El checkpointer es SQLite y vive en `software-factory-state/checkpointer/`,
 **separado de `factory.db`**. Uno es mutable por diseño y el otro inmutable por
