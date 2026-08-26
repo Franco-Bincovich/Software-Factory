@@ -311,14 +311,32 @@ opcional y por defecto vale `claude-sonnet-5`. `.env` está en `.gitignore`: la
 credencial no entra al repositorio, y tampoco al Operational State, que rechaza
 por nombre toda clave que parezca un secreto.
 
+### El modo de producción es un hecho de la corrida
+
+Con qué se produce —el modelo o el stub— se decide **una sola vez, al abrir la
+corrida**, y queda registrado en el Operational State como evento
+`modo_produccion_fijado` antes de gastar un token. Junto al modo se anota el
+nombre del modelo, como evidencia de contra qué se produjo.
+
+`--reanudar` lee ese hecho en vez de deducirlo de los flags. Una corrida
+iniciada con `--stub` se retoma con el stub aunque quien la reanude no repita el
+flag: si el modo se dedujera de la invocación, olvidarse de `--stub` al reanudar
+gastaría dinero real sin que nadie lo pidiera.
+
+Los flags no eligen en una reanudación; a lo sumo contradicen. Pedir `--stub`
+sobre una corrida abierta con el modelo, o `--modelo` sobre una abierta con el
+stub, **falla** nombrando el modo registrado, en vez de quedarse con uno de los
+dos. Y una corrida anterior a este registro no se reanuda: elegirle un modo
+ahora sería decidir por ella si gasta dinero.
+
 ## Cómo se corren los tests
 
 ```
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Ochenta y siete tests, uno por cada fila de los criterios de aceptación de las
-ocho tareas:
+Ciento cuatro tests, uno por cada fila de los criterios de aceptación de las ocho
+tareas, más los que cubren lo que se fue arreglando después:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -328,12 +346,14 @@ ocho tareas:
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
 | `test_presupuesto.py` | 12 | el criterio de aceptación de T12 |
 | `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
-| `test_grafo.py` | 13 | el criterio de aceptación de T14 |
+| `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
+| `test_correr.py` | 10 | el modo de producción a través de la reanudación |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
 
-**Ningún test invoca al modelo.** T15 se ejercita con un cliente falso: la
-primera corrida contra el modelo real no se simula. Correr la suite no cuesta
-plata.
+**Ningún test invoca al modelo.** T15 se ejercita con un cliente falso y la CLI
+con un espía en lugar del productor real; `.env` queda fuera de juego para que
+la credencial verdadera no se cuele en el entorno de un test. Correr la suite no
+cuesta plata.

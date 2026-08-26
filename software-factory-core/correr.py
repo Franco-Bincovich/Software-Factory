@@ -11,8 +11,15 @@ Ese ciclo —corre, frena, resolvés, reanudás— es deliberado. Un proceso que
 queda vivo esperando una decisión humana durante horas invita a agregarle un
 timeout, y ADR-004 lo prohíbe.
 
-Por defecto el plan lo produce el modelo. `--stub` lo reemplaza por un productor
-de relleno que no invoca a nadie: sirve para ejercitar el armazón sin gastar.
+Por defecto el plan lo produce el modelo, contra la API de Anthropic y con cargo
+a la cuenta. `--stub` lo reemplaza por un productor de relleno que no invoca a
+nadie: sirve para ejercitar el armazón sin gastar.
+
+El modo con el que arranca una corrida queda registrado como hecho suyo en el
+Operational State. `--reanudar` lo lee de ahí en vez de deducirlo de los flags,
+así que una corrida iniciada con `--stub` se retoma con el stub aunque quien la
+reanude no lo repita. Pedir en la reanudación un modo distinto del registrado no
+elige entre los dos: falla.
 """
 
 import argparse
@@ -98,15 +105,18 @@ def _checkpointer(ruta):
     return grafo.abrir_checkpointer(ruta)
 
 
-def elegir_productor(usar_stub, ruta_vault):
-    """Devuelve `(producir_fn, costo_por_defecto)`.
+def elegir_productor(modo, ruta_vault):
+    """Devuelve `(producir_fn, costo_por_defecto, nombre_del_modelo)`.
 
     El productor real mide su propio costo y devuelve `(plan, costo)`, así que
     el costo por defecto queda en cero: si alguna vez se usara, sería una
     invención, y un techo alimentado con números inventados no es un techo.
+
+    El nombre del modelo se devuelve para registrarlo como evidencia de la
+    corrida. En modo stub no hay ninguno, y el hecho lo dice callándolo.
     """
-    if usar_stub:
-        return producir_stub, COSTO_STUB
+    if modo == grafo.MODO_STUB:
+        return producir_stub, COSTO_STUB, None
 
     load_dotenv(RAIZ / ".env")
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
@@ -117,11 +127,66 @@ def elegir_productor(usar_stub, ruta_vault):
             "usá --stub."
         )
     modelo = os.environ.get("ANTHROPIC_MODEL", "").strip() or productor.MODELO_POR_DEFECTO
-    return productor.crear_productor(api_key, modelo, ruta_vault), 0.0
+    return productor.crear_productor(api_key, modelo, ruta_vault), 0.0, modelo
 
 
 class SinCredencial(RuntimeError):
     """No hay `ANTHROPIC_API_KEY` y no se pidió el stub."""
+
+
+class ModoContradictorio(RuntimeError):
+    """La reanudación pide un modo y la corrida se abrió con el otro."""
+
+
+class ModoNoRegistrado(RuntimeError):
+    """La corrida es anterior a que el modo se registrara como hecho suyo."""
+
+
+def modo_declarado(args):
+    """El modo que piden los flags, o `None` si no piden ninguno.
+
+    No pedir ninguno no es pedir el modelo: en una corrida nueva el default es
+    el modelo, pero en una reanudación la ausencia de flag no dice nada y el
+    hecho registrado es el que manda.
+    """
+    if args.stub:
+        return grafo.MODO_STUB
+    if args.modelo:
+        return grafo.MODO_MODELO
+    return None
+
+
+def modo_para_reanudar(store, run_id, declarado):
+    """El modo con el que se retoma la corrida: el que ella registró.
+
+    Los flags no eligen acá; a lo sumo contradicen. Y una contradicción no se
+    resuelve quedándose con uno de los dos: uno de los dos lados cree algo
+    falso, y seguir adelante gastaría —o dejaría de producir— sin que nadie lo
+    haya decidido.
+    """
+    registrado = grafo.modo_de(store, run_id)
+
+    if registrado is None:
+        if not store.leer_run(run_id):
+            raise grafo.CorridaInexistente(
+                "no hay corrida con id %s en el Operational State." % run_id
+            )
+        raise ModoNoRegistrado(
+            "la corrida %s no registró su modo de producción: es anterior a que "
+            "el modo se anotara como hecho de la corrida. No se reanuda, porque "
+            "elegirle un modo ahora sería decidir por ella si gasta dinero. "
+            "Abrí una corrida nueva declarando el modo." % run_id
+        )
+
+    if declarado is not None and declarado != registrado:
+        raise ModoContradictorio(
+            "la corrida %s se inició en modo '%s' y se la está reanudando con "
+            "--%s. El modo es un hecho de la corrida y no se cambia al "
+            "reanudarla. Reanudala sin ese flag y se retoma en modo '%s'."
+            % (run_id, registrado, declarado, registrado)
+        )
+
+    return registrado
 
 
 def main(argv=None):
@@ -137,8 +202,17 @@ def main(argv=None):
         action="store_true",
         help="Produce con el stub en vez del modelo. No consume ni exige credencial.",
     )
+    parser.add_argument(
+        "--modelo",
+        action="store_true",
+        help="Produce con el modelo real. Es el default; declararlo sirve para "
+        "que una reanudación diga en voz alta con qué cree que corre.",
+    )
     args = parser.parse_args(argv)
 
+    if args.stub and args.modelo:
+        print("--stub y --modelo son dos modos distintos; no se piden juntos.", file=sys.stderr)
+        return 2
     if args.reanudar and (args.pedido or args.definicion):
         print("--reanudar no se combina con --pedido ni --definicion.", file=sys.stderr)
         return 2
@@ -146,16 +220,33 @@ def main(argv=None):
         print("una corrida nueva exige --pedido y --definicion.", file=sys.stderr)
         return 2
 
-    try:
-        producir_fn, costo = elegir_productor(args.stub, args.vault)
-    except (SinCredencial, productor.ModeloSinPrecio) as error:
-        print("error: %s" % error, file=sys.stderr)
-        return 1
+    declarado = modo_declarado(args)
 
+    # El almacén se abre antes de elegir productor: en una reanudación el modo
+    # sale de ahí, y elegir productor sin haberlo leído sería justamente el bug.
     store = _store(args.db)
-    checkpointer = _checkpointer(args.checkpointer)
 
     try:
+        try:
+            if args.reanudar:
+                modo = modo_para_reanudar(store, args.reanudar, declarado)
+            else:
+                modo = declarado or grafo.MODO_MODELO
+            producir_fn, costo, nombre_modelo = elegir_productor(modo, args.vault)
+        except ModoContradictorio as error:
+            print("error: %s" % error, file=sys.stderr)
+            return 2
+        except (
+            ModoNoRegistrado,
+            grafo.CorridaInexistente,
+            SinCredencial,
+            productor.ModeloSinPrecio,
+        ) as error:
+            print("error: %s" % error, file=sys.stderr)
+            return 1
+
+        checkpointer = _checkpointer(args.checkpointer)
+
         if args.reanudar:
             estado = grafo.reanudar(
                 args.reanudar, store, checkpointer, producir_fn, args.vault, costo
@@ -181,6 +272,8 @@ def main(argv=None):
             checkpointer,
             args.vault,
             costo,
+            modo=modo,
+            modelo=nombre_modelo,
         )
         print(run_id)
         return 0

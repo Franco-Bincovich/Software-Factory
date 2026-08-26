@@ -255,7 +255,15 @@ class BaseGrafo(unittest.TestCase):
     def de_tipo(self, run_id, tipo):
         return [e for e in self.store.leer_run(run_id) if e["tipo"] == tipo]
 
-    def correr(self, productor=productor_valido, pedido=None, costo=0.0, vault=None):
+    def correr(
+        self,
+        productor=productor_valido,
+        pedido=None,
+        costo=0.0,
+        vault=None,
+        modo=grafo.MODO_STUB,
+        modelo=None,
+    ):
         return grafo.ejecutar(
             str(self.ruta_definicion),
             dict(PEDIDO if pedido is None else pedido),
@@ -264,6 +272,8 @@ class BaseGrafo(unittest.TestCase):
             self.checkpointer,
             vault,
             costo,
+            modo=modo,
+            modelo=modelo,
         )
 
     def retomar(self, run_id, productor=productor_valido, costo=0.0, vault=None):
@@ -385,6 +395,7 @@ class CorridaCompleta(BaseGrafo):
                 "pedido_recibido",
                 "techos_declarados",
                 "techos_efectivos",
+                "modo_produccion_fijado",
                 "gate_abierto",
                 "gate_resuelto",
                 "consumo_registrado",
@@ -640,6 +651,67 @@ class FalloDelProveedor(BaseGrafo):
             self.de_tipo(run, "run_cerrada")[0]["payload"]["resultado"],
             "escalado_por_infraestructura",
         )
+
+
+# --- 14 ---------------------------------------------------------------------
+
+
+class ModoDeProduccionRegistrado(BaseGrafo):
+    """El modo con el que se abre una corrida es un hecho suyo, no un flag.
+
+    Queda en el Operational State antes de producir nada, y se lee de ahí para
+    reanudar. Sin este hecho, una corrida iniciada con el stub se reanudaría
+    contra el modelo real por el solo hecho de que quien la reanuda no repitió
+    `--stub`, y gastaría dinero que nadie pidió gastar.
+    """
+
+    def test_el_hecho_queda_registrado_al_abrir_la_corrida(self):
+        run = self.correr(modo=grafo.MODO_STUB)
+
+        registrados = self.de_tipo(run, grafo.EVENTO_MODO)
+        self.assertEqual(len(registrados), 1)
+        self.assertEqual(registrados[0]["payload"]["modo"], "stub")
+        self.assertEqual(registrados[0]["actor"], "plataforma")
+
+    def test_se_registra_antes_de_producir_nada(self):
+        run = self.correr(modo=grafo.MODO_STUB)
+        tipos = self.tipos(run)
+
+        # Antes del Gate de entrada, y por lo tanto antes de cualquier
+        # `iteracion_producida` o `consumo_registrado`.
+        self.assertLess(tipos.index(grafo.EVENTO_MODO), tipos.index("gate_abierto"))
+        self.assertNotIn("consumo_registrado", tipos)
+
+    def test_el_nombre_del_modelo_queda_como_evidencia(self):
+        run = self.correr(modo=grafo.MODO_MODELO, modelo="claude-sonnet-5")
+
+        payload = self.de_tipo(run, grafo.EVENTO_MODO)[0]["payload"]
+        self.assertEqual(payload["modo"], "modelo")
+        self.assertEqual(payload["modelo"], "claude-sonnet-5")
+
+    def test_en_modo_stub_no_se_anota_ningun_modelo(self):
+        run = self.correr(modo=grafo.MODO_STUB, modelo="claude-sonnet-5")
+
+        self.assertNotIn("modelo", self.de_tipo(run, grafo.EVENTO_MODO)[0]["payload"])
+
+    def test_modo_de_lee_el_hecho_de_la_corrida(self):
+        run = self.correr(modo=grafo.MODO_STUB)
+
+        self.assertEqual(grafo.modo_de(self.store, run), "stub")
+
+    def test_modo_de_devuelve_none_cuando_la_corrida_no_lo_anoto(self):
+        # Una corrida anterior a este registro: existe, pero el hecho no está.
+        self.store.append("corrida-vieja", "run_iniciada", "plataforma", {"version": "1.0"})
+
+        self.assertIsNone(grafo.modo_de(self.store, "corrida-vieja"))
+
+    def test_no_se_abre_una_corrida_con_un_modo_que_no_existe(self):
+        with self.assertRaises(grafo.ModoInvalido) as capturado:
+            self.correr(modo="turbo")
+
+        self.assertIn("turbo", str(capturado.exception))
+        # Un modo inválido no deja rastro, igual que un pedido inválido.
+        self.assertEqual(self.eventos_totales(), 0)
 
 
 if __name__ == "__main__":

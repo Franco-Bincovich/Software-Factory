@@ -20,6 +20,13 @@ State: es el punto 4 de ADR-006.
 re-ejecuta el nodo interrumpido desde su primera línea. Un nodo de Gate que
 volviera a llamar a `abrir` chocaría con la regla de T11 que prohíbe dos Gates
 del mismo tipo en una corrida.
+
+**El modo de producción es un hecho de la corrida, no un parámetro de la
+invocación.** Se fija al abrirla y queda registrado antes de gastar un token.
+Una corrida iniciada con el stub se reanuda con el stub aunque quien la reanude
+no lo pida, porque el modo se lee del Operational State y no de los flags: si se
+infiriera de los flags, olvidar `--stub` al reanudar gastaría dinero real sin
+que nadie lo haya pedido.
 """
 
 import sqlite3
@@ -47,6 +54,13 @@ REANUDAR = "reanudar"
 
 AGENTE = "requirement-agent"
 PLATAFORMA = "plataforma"
+
+# El hecho que fija con qué se produce esta corrida. Se escribe una sola vez, al
+# abrirla, y no se vuelve a tocar: el Operational State no admite update.
+EVENTO_MODO = "modo_produccion_fijado"
+MODO_STUB = "stub"
+MODO_MODELO = "modelo"
+MODOS = (MODO_STUB, MODO_MODELO)
 
 TECHOS = (
     ("costo", "techo_costo_usd"),
@@ -81,6 +95,10 @@ class CorridaBloqueada(RuntimeError):
 
 class CorridaInexistente(RuntimeError):
     """No hay checkpoint para ese `run_id`."""
+
+
+class ModoInvalido(ValueError):
+    """Se quiso abrir una corrida con un modo de producción que no existe."""
 
 
 class FalloDeInfraestructura(RuntimeError):
@@ -440,6 +458,9 @@ def ejecutar(
     checkpointer,
     ruta_vault=None,
     costo_iteracion=0.0,
+    *,
+    modo,
+    modelo=None,
 ):
     """Corre la fase previa y lanza el grafo. Devuelve el `run_id`.
 
@@ -450,7 +471,21 @@ def ejecutar(
     Si el grafo frena en un Gate, devuelve igual: la corrida queda esperando y
     el proceso termina. Un proceso vivo esperando a una persona durante horas
     invita a ponerle un timeout, y ADR-004 lo prohíbe.
+
+    `modo` es obligatorio y no tiene valor por defecto. Un default sería una
+    etiqueta inventada sobre un hecho que después se lee para decidir si se
+    gasta dinero: quien abre la corrida declara con qué la abre.
+
+    `modelo` es evidencia y nada más. Queda registrado para poder saber después
+    contra qué se produjo, pero la reanudación no lo usa para ejecutar: el
+    nombre del modelo se sigue tomando del entorno.
     """
+    if modo not in MODOS:
+        raise ModoInvalido(
+            "modo de producción '%s' no existe; los de V0.1 son: %s."
+            % (modo, ", ".join(MODOS))
+        )
+
     definicion = cargar(ruta_definicion)
 
     motivos = validar(pedido)
@@ -462,6 +497,11 @@ def ejecutar(
     efectivos = techos_efectivos(pedido, definicion)
     run_id = ingresar(pedido, store, definicion.agent_id, str(definicion.version))
     store.append(run_id, "techos_efectivos", PLATAFORMA, efectivos)
+
+    hecho_modo = {"modo": modo}
+    if modo == MODO_MODELO and modelo:
+        hecho_modo["modelo"] = modelo
+    store.append(run_id, EVENTO_MODO, PLATAFORMA, hecho_modo)
 
     estado = EstadoGrafo(
         run_id=run_id,
@@ -478,6 +518,20 @@ def ejecutar(
     grafo = crear_grafo(producir_fn, store, checkpointer, ruta_vault, costo_iteracion)
     grafo.invoke(estado, _config(run_id))
     return run_id
+
+
+def modo_de(store, run_id):
+    """Con qué se abrió la corrida, según el Operational State. `None` si no consta.
+
+    Devuelve el primero de los eventos, no el último: el modo se fija una vez al
+    abrir la corrida y no cambia. `None` significa que la corrida es anterior a
+    este registro, y no es lo mismo que un modo por defecto: quien lea esto
+    tiene que decidir qué hace con una corrida cuyo modo nadie anotó.
+    """
+    for evento in store.leer_run(run_id):
+        if evento["tipo"] == EVENTO_MODO:
+            return evento["payload"].get("modo")
+    return None
 
 
 def reanudar(run_id, store, checkpointer, producir_fn, ruta_vault=None, costo_iteracion=0.0):
