@@ -1,6 +1,6 @@
 # software-factory-core
 
-Piezas de runtime de V0.1. Seis tareas del Bloque B de PLAN-V0.1:
+Piezas de runtime de V0.1. Ocho tareas del Bloque B de PLAN-V0.1:
 
 | Tarea | Pieza | Módulo |
 |---|---|---|
@@ -11,12 +11,14 @@ Piezas de runtime de V0.1. Seis tareas del Bloque B de PLAN-V0.1:
 | T12 | Contador de presupuesto | `src/presupuesto.py` |
 | T13 | Operational State | `src/operational_state.py` |
 | T14 | Armazón de ejecución | `src/grafo.py` · `correr.py` |
+| T15 | Productor real | `src/productor.py` |
 
-T14 las encadena: es lo que hace que exista una corrida.
+T14 las encadena: es lo que hace que exista una corrida. T15 es lo que hace que
+esa corrida produzca algo — y lo que hace que cueste plata.
 
 ```
 schema/     esquema JSON del Plan de Trabajo
-src/        las siete piezas
+src/        las ocho piezas
 templates/  la plantilla de pedido
 fixtures/   el pedido base y los seis planes de prueba
 tests/      un archivo por pieza
@@ -35,11 +37,12 @@ La especificación completa está en [`docs/T7-spec.md`](docs/T7-spec.md).
 
 ## Requisitos
 
-Python 3.12 y tres dependencias directas, declaradas con versión exacta en
-`requirements.txt`: `jsonschema` para el esquema del Plan de Trabajo, y
+Python 3.12 y cinco dependencias directas, declaradas con versión exacta en
+`requirements.txt`: `jsonschema` para el esquema del Plan de Trabajo;
 `langgraph` más `langgraph-checkpoint-sqlite` para el armazón de ejecución de
 T14 —LangGraph es el coordinador que fija ADR-006, y la versión se fija exacta
-por su punto 7—.
+por su punto 7—; y `anthropic` más `python-dotenv` para el productor real de
+T15, que invoca al modelo con la credencial que lee de `.env`.
 
 ```
 python3.12 -m venv .venv
@@ -281,14 +284,41 @@ El checkpointer es SQLite y vive en `software-factory-state/checkpointer/`,
 **separado de `factory.db`**. Uno es mutable por diseño y el otro inmutable por
 diseño: es el punto 4 de ADR-006 y no se fusionan.
 
+## Productor real (T15)
+
+Lo que reemplaza al stub de T14: la función que invoca al modelo y devuelve un
+Plan de Trabajo. El armazón no sabe que existe un modelo —recibe una función con
+la firma que declara T14 y la llama—, así que T15 entró sin tocar el grafo.
+
+**No decide nada del proceso.** No abre Gates, no mide techos, no verifica el
+plan y no escribe en el Operational State. Produce un plan y declara cuánto
+costó producirlo; quien recibe eso decide qué hacer.
+
+**El costo se mide, no se estima.** Sale de los tokens que la propia respuesta
+declara, multiplicados por el precio de lista del modelo, que está escrito a
+mano en `PRECIOS_USD_POR_MTOK`. Un modelo sin precio declarado no arranca: sin
+precio el consumo no se puede medir y el techo de ADR-010 sería decorativo. Un
+precio desactualizado no falla, miente — se actualiza a mano cuando cambia.
+
+### Configuración
+
+```
+cp .env.example .env      # y completar la key a mano
+```
+
+`ANTHROPIC_API_KEY` es obligatoria en modo modelo; `ANTHROPIC_MODEL` es
+opcional y por defecto vale `claude-sonnet-5`. `.env` está en `.gitignore`: la
+credencial no entra al repositorio, y tampoco al Operational State, que rechaza
+por nombre toda clave que parezca un secreto.
+
 ## Cómo se corren los tests
 
 ```
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Setenta y dos tests, uno por cada fila de los criterios de aceptación de las
-siete tareas:
+Ochenta y siete tests, uno por cada fila de los criterios de aceptación de las
+ocho tareas:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -298,7 +328,12 @@ siete tareas:
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
 | `test_presupuesto.py` | 12 | el criterio de aceptación de T12 |
 | `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
-| `test_grafo.py` | 12 | el criterio de aceptación de T14 |
+| `test_grafo.py` | 13 | el criterio de aceptación de T14 |
+| `test_productor.py` | 14 | el criterio de aceptación de T15 |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
+
+**Ningún test invoca al modelo.** T15 se ejercita con un cliente falso: la
+primera corrida contra el modelo real no se simula. Correr la suite no cuesta
+plata.
