@@ -22,3 +22,7 @@ Actualizar una skill es un pull request revisado por un humano. Nunca automátic
 Ninguna skill se habilita mientras contenga archivos que no sean texto plano legible por un humano. El criterio es amplio: se declaran y se leen todos los archivos no documentales, no solo los ejecutables, porque un HTML puede traer JavaScript y un PDF es un formato con superficie de ataque propia. Estar copiada en el repo y estar habilitada son dos estados distintos: lo primero es este manifiesto, lo segundo exige que alguien haya leído todo lo que no sea markdown y que exista una frontera de ejecución aislada, un lugar donde correr esos archivos sin acceso al resto del sistema.
 
 Las dependencias declaradas por una skill se congelan a versión exacta antes de habilitarla. Un `requirements.txt` sin versiones fijadas es motivo de rechazo: el hash del commit congela la skill, no lo que la skill descarga de internet al instalarse.
+
+## Nota sobre codificación
+
+Los archivos vendoreados se guardan con saltos de línea LF, igual que el contenido canónico del upstream. `.gitattributes` marca `skills/externas/**` como `-text` para que git no los convierta en checkout, y `CHECKSUMS.txt` congela los hashes de ese contenido LF. Sin esa combinación, un clon en Windows con `core.autocrlf` activo reescribiría los saltos de línea y la verificación fallaría sin que nadie hubiera manipulado nada.
