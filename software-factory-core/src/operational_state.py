@@ -172,6 +172,20 @@ class OperationalState:
                     break
         return [evento for _, evento in abiertos]
 
+    def eventos_de_tipo(self, tipo):
+        """Todos los eventos de un tipo, de todas las corridas, ordenados por id.
+
+        Lectura pura: no toca el esquema ni los triggers. Hace falta para seguir
+        un linaje — qué corridas heredaron un plan no se puede saber leyendo una
+        corrida sola, porque el hecho vive en la heredera y no en el origen.
+        """
+        filas = self._conexion.execute(
+            "SELECT id, run_id, ts, tipo, actor, payload FROM evento "
+            "WHERE tipo = ? ORDER BY id",
+            (tipo,),
+        ).fetchall()
+        return [self._a_evento(f) for f in filas]
+
     def consumo(self, run_id):
         """Consumo acumulado de una corrida.
 

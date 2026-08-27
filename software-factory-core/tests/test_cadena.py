@@ -527,7 +527,10 @@ class Idempotencia(BaseCadena):
         lanzadas_antes = len(self.de_tipo(run, "unidad_lanzada"))
         entregadas_antes = [e["payload"]["run_developer"] for e in self.de_tipo(run, "unidad_entregada")]
 
-        estado = {"run_id": run, "plan": plan, "pedido": dict(PEDIDO)}
+        estado = {
+            "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
+            "techo_cadena": PEDIDO["techo_costo_usd"],
+        }
         resultado = self.nodo()(estado)
 
         self.assertEqual(len(self.de_tipo(run, "unidad_lanzada")), lanzadas_antes)
@@ -538,7 +541,10 @@ class Idempotencia(BaseCadena):
     def test_reusa_el_directorio_ya_registrado(self):
         run, plan, _ = self.correr_cadena()
         ruta = self.de_tipo(run, "directorio_trabajo")[0]["payload"]["ruta"]
-        self.nodo()({"run_id": run, "plan": plan, "pedido": dict(PEDIDO)})
+        self.nodo()({
+            "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
+            "techo_cadena": PEDIDO["techo_costo_usd"],
+        })
         self.assertEqual(len(self.de_tipo(run, "directorio_trabajo")), 1)
         self.assertEqual(cadena.directorio_registrado(self.store, run), ruta)
 

@@ -106,6 +106,12 @@ def regimen_de_gates(hay_cadena):
 # El hecho que fija con qué se produce esta corrida. Se escribe una sola vez, al
 # abrirla, y no se vuelve a tocar: el Operational State no admite update.
 EVENTO_MODO = "modo_produccion_fijado"
+
+# Los hechos de una corrida que hereda un plan ya verificado en vez de producirlo.
+# Viven acá y no en `cadena` porque los escribe el que abre la corrida, y `cadena`
+# los lee: `cadena` importa `grafo`, no al revés.
+EVENTO_PLAN_HEREDADO = "plan_heredado"
+EVENTO_PEDIDO_HEREDADO = "pedido_heredado"
 MODO_STUB = "stub"
 MODO_MODELO = "modelo"
 MODOS = (MODO_STUB, MODO_MODELO)
@@ -137,6 +143,7 @@ class EstadoGrafo(TypedDict):
     techos_efectivos: Dict[str, Any]
     directorio: Optional[str]
     entregas: List[Dict[str, Any]]
+    techo_cadena: float
 
 
 class CorridaBloqueada(RuntimeError):
@@ -561,6 +568,15 @@ def _somete_salida(estado):
     }
 
 
+def _somete_entrada_heredada(estado):
+    """Lo que se aprueba al abrir una corrida que hereda un plan."""
+    return {
+        "plan": estado["plan"],
+        "techo_cadena": estado["techo_cadena"],
+        "techos": estado["techos_efectivos"],
+    }
+
+
 # --- aristas condicionales --------------------------------------------------
 
 
@@ -599,7 +615,7 @@ def _tras_verificar(estado):
 
 def crear_grafo(
     producir_fn, store, checkpointer, ruta_vault=None, costo_iteracion=0.0,
-    ejecutar_unidades_fn=None, borrar_trabajo_fn=None,
+    ejecutar_unidades_fn=None, borrar_trabajo_fn=None, heredado=False,
 ):
     """Devuelve el grafo compilado. Nodos y aristas declarados a mano.
 
@@ -609,17 +625,20 @@ def crear_grafo(
     `ejecutar_unidades_fn` es el coordinador de la cadena. Se inyecta con el
     mismo criterio que `producir_fn`: este módulo ordena la corrida y no sabe qué
     es un Developer. Sin él, la corrida cierra con el plan verificado.
+
+    `heredado` cambia **una sola arista**: la corrida que trae el plan de otra no
+    pasa por la fase Requirement, va del Gate de entrada directo a ejecutar las
+    unidades. Es un parámetro y no un grafo aparte para que no haya dos
+    definiciones del mismo grafo separándose con el tiempo.
     """
     grafo = StateGraph(EstadoGrafo)
 
-    grafo.add_node(
-        "gate_entrada",
-        _nodo_gate(
-            store,
-            "entrada",
-            lambda e: {"pedido": e["pedido"], "techos": e["techos_efectivos"]},
-        ),
+    somete_entrada = (
+        _somete_entrada_heredada
+        if heredado
+        else (lambda e: {"pedido": e["pedido"], "techos": e["techos_efectivos"]})
     )
+    grafo.add_node("gate_entrada", _nodo_gate(store, "entrada", somete_entrada))
     grafo.add_node("verificar_techos", _nodo_verificar_techos(store))
     grafo.add_node("producir", _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion))
     grafo.add_node("verificar", _nodo_verificar(store))
@@ -633,7 +652,12 @@ def crear_grafo(
 
     grafo.add_edge(START, "gate_entrada")
     grafo.add_conditional_edges(
-        "gate_entrada", _tras_gate_entrada, {"aprobado": "verificar_techos", "rechazado": "fin"}
+        "gate_entrada",
+        _tras_gate_entrada,
+        {
+            "aprobado": "ejecutar_unidades" if heredado else "verificar_techos",
+            "rechazado": "fin",
+        },
     )
     grafo.add_conditional_edges(
         "verificar_techos", _tras_verificar_techos, {"ok": "producir", "techo": "escalar"}
@@ -735,6 +759,7 @@ def ejecutar(
         techos_efectivos=efectivos,
         directorio=None,
         entregas=[],
+        techo_cadena=pedido["techo_costo_usd"],
     )
 
     grafo = crear_grafo(
@@ -742,6 +767,96 @@ def ejecutar(
         ejecutar_unidades_fn, borrar_trabajo_fn,
     )
     grafo.invoke(estado, _config(run_id))
+    return run_id
+
+
+def es_heredada(store, run_id):
+    """Si la corrida trajo su plan de otra en vez de producirlo.
+
+    Se lee del Operational State y no de los flags de la reanudación: si el grafo
+    se rearmara sin saberlo, aprobar el Gate de entrada mandaría a la fase
+    Requirement y la corrida produciría un plan sobre uno heredado.
+    """
+    return any(e["tipo"] == EVENTO_PLAN_HEREDADO for e in store.leer_run(run_id))
+
+
+def ejecutar_heredado(
+    store,
+    checkpointer,
+    herencia,
+    techo_cadena,
+    definicion_developer,
+    ejecutar_unidades_fn,
+    borrar_trabajo_fn=None,
+    ruta_vault=None,
+    *,
+    modo,
+    modelo=None,
+):
+    """Abre una corrida que ejecuta un plan ya verificado en otra corrida.
+
+    No produce plan: lo hereda. Por eso no pasa por la fase Requirement y por eso
+    su Agent Definition es la del Developer, que es el único agente que corre.
+
+    Lleva Gate de entrada igual que cualquier otra. No es una formalidad heredada
+    del otro camino: comprometer el presupuesto del Developer sobre un plan que
+    puede ser viejo es una decisión de recursos, que es para lo que ADR-004 pone
+    ese Gate. Lo que somete es el plan y el techo con su descuento, no el pedido.
+
+    `herencia` la arma `cadena`, que es quien sabe leer un linaje. Este módulo
+    solo escribe los hechos y ordena la corrida.
+    """
+    run_id = store.nuevo_run_id()
+    pedido = herencia["pedido"]
+
+    store.append(
+        run_id,
+        "run_iniciada",
+        PLATAFORMA,
+        {
+            "agent_definition_id": definicion_developer.agent_id,
+            "version": str(definicion_developer.version),
+        },
+    )
+    # El pedido viaja copiado, no referenciado, y con un tipo de evento propio:
+    # `pedido_recibido` significa "entró por Intake" y esto no entró por ahí. Una
+    # corrida tiene que poder leerse sola.
+    store.append(run_id, EVENTO_PEDIDO_HEREDADO, PLATAFORMA, dict(pedido))
+    store.append(run_id, EVENTO_PLAN_HEREDADO, PLATAFORMA, herencia["hecho"])
+
+    efectivos = {
+        "costo": techo_cadena,
+        "tiempo_min": pedido["techo_tiempo_min"],
+        "iteraciones": pedido["techo_iteraciones"],
+    }
+    store.append(run_id, "techos_efectivos", PLATAFORMA, efectivos)
+
+    hecho_modo = {"modo": modo}
+    if modo == MODO_MODELO and modelo:
+        hecho_modo["modelo"] = modelo
+    store.append(run_id, EVENTO_MODO, PLATAFORMA, hecho_modo)
+    store.append(run_id, EVENTO_GATES, PLATAFORMA, regimen_de_gates(True))
+
+    estado = EstadoGrafo(
+        run_id=run_id,
+        definicion=definicion_a_dict(definicion_developer),
+        pedido=dict(pedido),
+        texto_rastreable=texto_rastreable(pedido),
+        plan=herencia["plan"],
+        incumplimientos=[],
+        iteracion=0,
+        resultado=None,
+        techos_efectivos=efectivos,
+        directorio=None,
+        entregas=[],
+        techo_cadena=techo_cadena,
+    )
+
+    compilado = crear_grafo(
+        None, store, checkpointer, ruta_vault, 0.0,
+        ejecutar_unidades_fn, borrar_trabajo_fn, heredado=True,
+    )
+    compilado.invoke(estado, _config(run_id))
     return run_id
 
 
@@ -772,7 +887,7 @@ def reanudar(
     """
     grafo = crear_grafo(
         producir_fn, store, checkpointer, ruta_vault, costo_iteracion,
-        ejecutar_unidades_fn, borrar_trabajo_fn,
+        ejecutar_unidades_fn, borrar_trabajo_fn, es_heredada(store, run_id),
     )
     config = _config(run_id)
 

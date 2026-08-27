@@ -28,7 +28,13 @@ from pathlib import Path
 
 import grafo_developer
 import presupuesto
-from grafo import PLATAFORMA, _Techos, definicion_a_dict
+from grafo import (
+    EVENTO_PEDIDO_HEREDADO,
+    EVENTO_PLAN_HEREDADO,
+    PLATAFORMA,
+    _Techos,
+    definicion_a_dict,
+)
 
 AGENTE = "developer-agent"
 
@@ -206,6 +212,180 @@ def borrar_directorio(store, run_pedido, ruta):
     store.append(run_pedido, "directorio_borrado", PLATAFORMA, {"ruta": ruta})
 
 
+# --- herencia de un plan ya verificado --------------------------------------
+
+
+class PlanNoHeredable(RuntimeError):
+    """La corrida nombrada no tiene un plan verificado que se pueda heredar."""
+
+
+class PlanYaEjecutado(RuntimeError):
+    """El plan ya produjo código en alguna corrida del linaje."""
+
+
+class SinPresupuestoHeredado(RuntimeError):
+    """Lo que el pedido autorizó ya se gastó: no queda techo para ejecutar."""
+
+
+def pedido_de(store, run_id):
+    """El pedido que originó la corrida, haya entrado por Intake o heredado."""
+    for evento in store.leer_run(run_id):
+        if evento["tipo"] in ("pedido_recibido", EVENTO_PEDIDO_HEREDADO):
+            return evento["payload"]
+    return None
+
+
+def modo_de_produccion(store, run_id):
+    """Con qué se produjo esa corrida. `None` si no consta."""
+    for evento in store.leer_run(run_id):
+        if evento["tipo"] == "modo_produccion_fijado":
+            return evento["payload"]
+    return None
+
+
+def plan_verificado_de(store, run_id):
+    """`(plan, iteracion, id del veredicto)` de la última verificación válida.
+
+    El plan se identifica por la corrida que lo produjo, no por su `plan_id`: ese
+    campo lo declara el agente y dos planes distintos pueden traer el mismo.
+
+    Solo cuentan las verificaciones de plan. Las de entrega llevan `unidad` en su
+    payload y viven en corridas de Developer, pero se filtran igual: confiar en
+    que no aparezcan acá sería confiar en una separación que nadie comprueba.
+    """
+    planes, veredicto = {}, None
+    for evento in store.leer_run(run_id):
+        payload = evento["payload"]
+        if evento["tipo"] == "iteracion_producida":
+            planes[payload["iteracion"]] = payload["plan"]
+        elif evento["tipo"] == "verificacion_ejecutada":
+            if payload.get("valido") and "unidad" not in payload:
+                veredicto = evento
+
+    if veredicto is None:
+        raise PlanNoHeredable(
+            "la corrida %s no tiene ningún plan verificado. Un plan queda "
+            "inmutable —y por lo tanto heredable— cuando pasa la verificación y "
+            "el veredicto se registra; antes de eso es un borrador." % run_id
+        )
+    iteracion = veredicto["payload"]["iteracion"]
+    if iteracion not in planes:
+        raise PlanNoHeredable(
+            "la corrida %s registró una verificación válida de la iteración %s y "
+            "no el plan de esa iteración. El registro está incompleto."
+            % (run_id, iteracion)
+        )
+    return planes[iteracion], iteracion, veredicto["id"]
+
+
+def raiz_del_plan(store, run_id):
+    """La corrida que produjo el plan, aunque se nombre a una que lo heredó."""
+    for evento in store.leer_run(run_id):
+        if evento["tipo"] == EVENTO_PLAN_HEREDADO:
+            return evento["payload"]["origen"]
+    return run_id
+
+
+def herederas_de(store, raiz):
+    return [
+        evento["run_id"]
+        for evento in store.eventos_de_tipo(EVENTO_PLAN_HEREDADO)
+        if evento["payload"].get("origen") == raiz
+    ]
+
+
+def corridas_de_developer(store, run_pedido):
+    return [
+        evento["payload"]["run_developer"]
+        for evento in store.leer_run(run_pedido)
+        if evento["tipo"] == "unidad_lanzada"
+    ]
+
+
+def ejecuciones_del_plan(store, raiz):
+    """Las corridas del linaje que ya entregaron alguna unidad de este plan."""
+    return [
+        run
+        for run in [raiz] + herederas_de(store, raiz)
+        if any(e["tipo"] == "unidad_entregada" for e in store.leer_run(run))
+    ]
+
+
+def gastado_en_el_linaje(store, raiz):
+    """Todo lo que este plan consumió: sus corridas y las de sus Developers."""
+    total = 0.0
+    for run in [raiz] + herederas_de(store, raiz):
+        total += costo_de_la_cadena(store, run, corridas_de_developer(store, run))
+    return total
+
+
+def techo_heredado(store, raiz, techo_pedido):
+    """Lo que queda del techo del pedido después de lo ya gastado en el linaje.
+
+    **El techo pertenece al trabajo, no a la corrida.** El pedido dijo que esto
+    puede costar hasta cierto monto; producir el plan ya consumió parte. Si cada
+    corrida arrancara con el techo entero, partir el trabajo en dos corridas
+    sería la forma de evadirlo, y un techo evadible no es un techo.
+    """
+    gastado = gastado_en_el_linaje(store, raiz)
+    resto = techo_pedido - gastado
+    if resto <= 0:
+        raise SinPresupuestoHeredado(
+            "el pedido autorizó USD %s y el linaje del plan ya gastó USD %s. No "
+            "queda techo para ejecutarlo: elevarlo es una decisión que dispara "
+            "Gate por el criterio 4 del piso de ADR-004, no un ajuste."
+            % (techo_pedido, round(gastado, 6))
+        )
+    return resto
+
+
+def preparar_herencia(store, run_nombrado, reejecutar=False):
+    """Lee el linaje y arma lo que hace falta para abrir la corrida heredera.
+
+    Devuelve `{plan, pedido, origen, hecho}`. `hecho` es el payload de
+    `plan_heredado`: de dónde viene el plan, cuál es, de qué veredicto nos
+    fiamos, **con qué modo se produjo** y a qué ejecuciones sucede.
+
+    El plan heredado **no se vuelve a verificar**. Es inmutable y su veredicto
+    está registrado; reverificarlo sería aplicarle las reglas de hoy a algo
+    juzgado bajo las de entonces, y además daría a entender que el registro puede
+    estar mal. Lo que se anota es de qué verificación nos fiamos.
+    """
+    origen = raiz_del_plan(store, run_nombrado)
+    plan, iteracion, veredicto = plan_verificado_de(store, origen)
+
+    pedido = pedido_de(store, origen)
+    if pedido is None:
+        raise PlanNoHeredable(
+            "la corrida %s no registró el pedido que la originó; sin él no hay "
+            "techo que heredar." % origen
+        )
+
+    previas = ejecuciones_del_plan(store, origen)
+    if previas and not reejecutar:
+        raise PlanYaEjecutado(
+            "el plan de la corrida %s ya produjo código en %s. Reejecutarlo deja "
+            "el registro con dos respuestas a qué código satisface este plan: si "
+            "es lo que querés, pedilo con --reejecutar y la corrida nueva declara "
+            "a cuáles sucede." % (origen, ", ".join(previas))
+        )
+
+    hecho = {
+        "de_corrida": run_nombrado,
+        "origen": origen,
+        "plan_id": plan.get("plan_id"),
+        "iteracion": iteracion,
+        "veredicto_evento": veredicto,
+        # Con qué se produjo el plan original. Sin esto, leer una entrega
+        # producida por un modelo sobre un plan producido por otro —o por el
+        # stub— no se puede interpretar después.
+        "modo_de_origen": modo_de_produccion(store, origen),
+        "ejecuciones_previas": previas,
+        "reejecuta": bool(previas),
+    }
+    return {"plan": plan, "pedido": pedido, "origen": origen, "hecho": hecho}
+
+
 # --- el nodo que ejecuta las unidades ---------------------------------------
 
 
@@ -232,7 +412,7 @@ def nodo_ejecutar_unidades(
     def nodo(estado):
         run_pedido = estado["run_id"]
         plan = estado["plan"]
-        techo_cadena = estado["pedido"]["techo_costo_usd"]
+        techo_cadena = estado["techo_cadena"]
 
         directorio = directorio_registrado(store, run_pedido)
         if directorio is None:
@@ -390,6 +570,9 @@ def _correr_unidad(
 
 __all__ = [
     "CicloDeDependencias",
+    "PlanNoHeredable",
+    "PlanYaEjecutado",
+    "SinPresupuestoHeredado",
     "RutaFueraDelDirectorio",
     "RAIZ_TRABAJO_POR_DEFECTO",
     "borrar_directorio",
@@ -402,5 +585,7 @@ __all__ = [
     "escribir_entrega",
     "nodo_ejecutar_unidades",
     "orden_topologico",
+    "preparar_herencia",
+    "techo_heredado",
     "unidades_entregadas",
 ]

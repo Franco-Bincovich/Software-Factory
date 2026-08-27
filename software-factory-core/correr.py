@@ -475,6 +475,20 @@ def main(argv=None):
         help="Corre el Requirement Agent solo: produce el plan y cierra sin "
         "ejecutar unidades. Hay que pedirlo explícitamente.",
     )
+    parser.add_argument(
+        "--desde-corrida",
+        dest="desde_corrida",
+        metavar="RUN_ID",
+        help="Ejecuta el plan ya verificado de esa corrida en vez de producir "
+        "uno nuevo. El techo que hereda es el del pedido menos lo que el plan "
+        "ya gastó.",
+    )
+    parser.add_argument(
+        "--reejecutar",
+        action="store_true",
+        help="Permite heredar un plan que ya produjo código. La corrida nueva "
+        "declara a qué ejecuciones sucede.",
+    )
     args = parser.parse_args(argv)
 
     if args.stub and args.modelo:
@@ -483,7 +497,26 @@ def main(argv=None):
     if args.reanudar and (args.pedido or args.definicion):
         print("--reanudar no se combina con --pedido ni --definicion.", file=sys.stderr)
         return 2
-    if not args.reanudar and not (args.pedido and args.definicion):
+    if args.desde_corrida and (
+        args.pedido or args.definicion or args.reanudar or args.solo_plan
+    ):
+        print(
+            "--desde-corrida hereda el plan y el pedido de otra corrida: no se "
+            "combina con --pedido, --definicion, --reanudar ni --solo-plan.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.desde_corrida and not args.definicion_developer:
+        print(
+            "--desde-corrida exige --definicion-developer: heredar un plan es "
+            "para ejecutarlo.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.reejecutar and not args.desde_corrida:
+        print("--reejecutar solo tiene sentido con --desde-corrida.", file=sys.stderr)
+        return 2
+    if not (args.reanudar or args.desde_corrida) and not (args.pedido and args.definicion):
         print("una corrida nueva exige --pedido y --definicion.", file=sys.stderr)
         return 2
     if args.definicion_developer and args.solo_plan:
@@ -492,7 +525,11 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 2
-    if not args.reanudar and not args.definicion_developer and not args.solo_plan:
+    if (
+        not (args.reanudar or args.desde_corrida)
+        and not args.definicion_developer
+        and not args.solo_plan
+    ):
         # Que el flag falte no puede significar "corré media cadena y cerrá en
         # verde": es la decisión de si la fábrica ejecuta el plan o solo lo
         # produce, y una decisión así no se toma por omisión.
@@ -521,7 +558,14 @@ def main(argv=None):
             else:
                 modo = declarado or grafo.MODO_MODELO
                 ruta_developer = args.definicion_developer
-            producir_fn, costo, nombre_modelo = elegir_productor(modo, args.vault)
+            if args.desde_corrida:
+                # Una corrida heredera no produce plan: no hace falta productor
+                # de planes. El nombre del modelo sí, como evidencia.
+                producir_fn, costo, nombre_modelo = None, 0.0, None
+                if modo != grafo.MODO_STUB:
+                    _, nombre_modelo = _credencial_y_modelo()
+            else:
+                producir_fn, costo, nombre_modelo = elegir_productor(modo, args.vault)
             ejecutar_unidades_fn, borrar_trabajo_fn = armar_cadena(
                 store, ruta_developer, args.trabajo, args.vault,
                 args.conservar_trabajo, modo,
@@ -546,6 +590,43 @@ def main(argv=None):
                 ejecutar_unidades_fn, borrar_trabajo_fn,
             )
             print("corrida %s: %s" % (args.reanudar, estado.get("resultado") or "en curso"))
+            return 0
+
+        if args.desde_corrida:
+            try:
+                herencia = cadena.preparar_herencia(
+                    store, args.desde_corrida, args.reejecutar
+                )
+                techo = cadena.techo_heredado(
+                    store, herencia["origen"], herencia["pedido"]["techo_costo_usd"]
+                )
+            except (
+                cadena.PlanNoHeredable,
+                cadena.PlanYaEjecutado,
+                cadena.SinPresupuestoHeredado,
+            ) as error:
+                print("error: %s" % error, file=sys.stderr)
+                return 1
+
+            run_id = grafo.ejecutar_heredado(
+                store,
+                checkpointer,
+                herencia,
+                techo,
+                cargar(args.definicion_developer),
+                ejecutar_unidades_fn,
+                borrar_trabajo_fn,
+                args.vault,
+                modo=modo,
+                modelo=nombre_modelo,
+            )
+            store.append(
+                run_id,
+                EVENTO_CADENA,
+                "plataforma",
+                hecho_de_cadena(args.definicion_developer),
+            )
+            print(run_id)
             return 0
 
         try:
