@@ -25,4 +25,6 @@ Las dependencias declaradas por una skill se congelan a versión exacta antes de
 
 ## Nota sobre codificación
 
-Los archivos vendoreados se guardan con saltos de línea LF, igual que el contenido canónico del upstream. `.gitattributes` marca `skills/externas/**` como `-text` para que git no los convierta en checkout, y `CHECKSUMS.txt` congela los hashes de ese contenido LF. Sin esa combinación, un clon en Windows con `core.autocrlf` activo reescribiría los saltos de línea y la verificación fallaría sin que nadie hubiera manipulado nada.
+Los archivos vendoreados se guardan con saltos de línea LF, igual que el contenido canónico del upstream. `.gitattributes` marca `skills/**` como `-text` para que git no los convierta en checkout, y `CHECKSUMS.txt` congela los hashes de ese contenido LF. Sin esa combinación, un clon en Windows con `core.autocrlf` activo reescribiría los saltos de línea y la verificación fallaría sin que nadie hubiera manipulado nada.
+
+El alcance es toda la carpeta `skills/`, no solo `skills/externas/`. `CHECKSUMS.txt` y este manifiesto viven un nivel arriba del contenido vendoreado, y una regla acotada a `skills/externas/**` los dejaría desprotegidos: en un clon en Windows, `core.autocrlf` le agregaba un CR al final de cada línea de `CHECKSUMS.txt` y `sha256sum -c` fallaba los 49 archivos por nombre inexistente, no por hash incorrecto. Blindar el contenido y dejar expuesta la herramienta que lo verifica no sirve de nada: la protección tiene que cubrir el listado, no solo lo listado.
