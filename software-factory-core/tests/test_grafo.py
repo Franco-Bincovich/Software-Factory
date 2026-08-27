@@ -598,11 +598,16 @@ class Trazabilidad(BaseGrafo):
         )
 
         # La corrida declara bajo qué régimen de Gates corrió, sin que haya que
-        # deducirlo de la versión del código que la ejecutó.
+        # deducirlo de la versión del código que la ejecutó. Ésta no tiene
+        # cadena, así que declara un solo Gate: sin Developer no hay entrega que
+        # aprobar, y declarar dos abriendo uno sería el registro mintiendo.
         regimen = por_tipo[grafo.EVENTO_GATES]["payload"]
-        self.assertEqual(regimen["gates"], ["entrada", "salida"])
+        self.assertEqual(regimen["gates"], ["entrada"])
         self.assertEqual(regimen["suprimido"], "salida_de_plan")
         self.assertTrue(regimen["motivo"].strip())
+
+        # Y el cierre comprobó que ese régimen se cumplió.
+        self.assertEqual(self.de_tipo(run, grafo.EVENTO_REGIMEN_INCUMPLIDO), [])
 
         # La secuencia está ordenada y es la única fuente consultada.
         self.assertEqual([e["id"] for e in eventos], sorted(e["id"] for e in eventos))

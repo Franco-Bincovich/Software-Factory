@@ -101,7 +101,12 @@ class BaseCLI(unittest.TestCase):
         return codigo, salida.getvalue().strip(), error.getvalue().strip()
 
     def abrir_corrida(self, *flags):
-        """Abre una corrida nueva y devuelve su `run_id`. Frena en el Gate."""
+        """Abre una corrida nueva y devuelve su `run_id`. Frena en el Gate.
+
+        Va con `--solo-plan` porque estos tests son sobre el modo de producción,
+        no sobre la cadena. Declararlo es obligatorio: una corrida nueva tiene
+        que decir si ejecuta las unidades del plan o solo lo produce.
+        """
         codigo, run_id, error = self.cli(
             "--pedido",
             str(self.ruta_pedido),
@@ -109,6 +114,7 @@ class BaseCLI(unittest.TestCase):
             str(self.ruta_definicion),
             "--vault",
             str(self.vault),
+            "--solo-plan",
             *flags,
         )
         self.assertEqual(codigo, 0, error)

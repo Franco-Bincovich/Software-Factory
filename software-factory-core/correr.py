@@ -303,28 +303,54 @@ class DeveloperContradictorio(RuntimeError):
     """La reanudación pide una definición de Developer y la corrida abrió con otra."""
 
 
-EVENTO_DEVELOPER = "developer_fijado"
+EVENTO_CADENA = "cadena_fijada"
+MOTIVO_SOLO_PLAN = "se pidió --solo-plan: el Requirement Agent corre solo"
 
 
-def developer_de(store, run_id):
-    """La definición de Developer con la que se abrió la corrida. `None` si no consta.
+def hecho_de_cadena(ruta_developer):
+    """El hecho que fija si esta corrida tiene cadena. Se escribe siempre.
 
-    Mismo criterio que el modo de producción: con qué corre la cadena es un hecho
-    de la corrida, no un parámetro de la invocación. Reanudar con otra definición
-    cambiaría en silencio quién ejecutó las unidades.
+    Tener Developer o no decide si la fábrica hace la mitad de su trabajo, y por
+    lo tanto no puede quedar resuelto por la ausencia de un flag. Es el mismo
+    criterio que `modo_produccion_fijado`: una corrida que no anota esta decisión
+    no se puede explicar sola — leyendo sus eventos no se distingue "nadie pidió
+    cadena" de "se pidió y no se armó".
     """
+    if ruta_developer:
+        return {"developer": str(ruta_developer)}
+    return {"developer": None, "motivo": MOTIVO_SOLO_PLAN}
+
+
+def cadena_de(store, run_id):
+    """El hecho de cadena de la corrida, o `None` si es anterior al registro."""
     for evento in store.leer_run(run_id):
-        if evento["tipo"] == EVENTO_DEVELOPER:
-            return evento["payload"].get("ruta")
+        if evento["tipo"] == EVENTO_CADENA:
+            return evento["payload"]
     return None
 
 
 def developer_para_reanudar(store, run_id, declarada):
-    """La definición con la que se retoma: la que la corrida registró."""
-    registrada = developer_de(store, run_id)
-    if registrada is None:
+    """La definición con la que se retoma: la que la corrida registró.
+
+    Los flags no eligen acá; a lo sumo contradicen. Reanudar con otra definición
+    —o pedir cadena en una corrida abierta con `--solo-plan`— cambiaría en
+    silencio quién ejecutó las unidades.
+    """
+    hecho = cadena_de(store, run_id)
+    if hecho is None:
         return declarada
-    if declarada is not None and str(declarada) != str(registrada):
+
+    registrada = hecho.get("developer")
+    if declarada is None:
+        return registrada
+    if registrada is None:
+        raise DeveloperContradictorio(
+            "la corrida %s se abrió con --solo-plan y se la está reanudando con "
+            "--definicion-developer. Tener cadena o no es un hecho de la corrida "
+            "y no se cambia al reanudarla. Para ejecutar unidades, abrí una "
+            "corrida nueva." % run_id
+        )
+    if str(declarada) != str(registrada):
         raise DeveloperContradictorio(
             "la corrida %s se abrió con la definición de Developer '%s' y se la "
             "está reanudando con '%s'. Con qué corre la cadena es un hecho de la "
@@ -442,6 +468,13 @@ def main(argv=None):
         action="store_true",
         help="No borra el directorio de trabajo después de aprobar el Gate de salida.",
     )
+    parser.add_argument(
+        "--solo-plan",
+        dest="solo_plan",
+        action="store_true",
+        help="Corre el Requirement Agent solo: produce el plan y cierra sin "
+        "ejecutar unidades. Hay que pedirlo explícitamente.",
+    )
     args = parser.parse_args(argv)
 
     if args.stub and args.modelo:
@@ -452,6 +485,24 @@ def main(argv=None):
         return 2
     if not args.reanudar and not (args.pedido and args.definicion):
         print("una corrida nueva exige --pedido y --definicion.", file=sys.stderr)
+        return 2
+    if args.definicion_developer and args.solo_plan:
+        print(
+            "--definicion-developer y --solo-plan piden cosas opuestas; no se combinan.",
+            file=sys.stderr,
+        )
+        return 2
+    if not args.reanudar and not args.definicion_developer and not args.solo_plan:
+        # Que el flag falte no puede significar "corré media cadena y cerrá en
+        # verde": es la decisión de si la fábrica ejecuta el plan o solo lo
+        # produce, y una decisión así no se toma por omisión.
+        print(
+            "una corrida nueva exige --definicion-developer para ejecutar las "
+            "unidades del plan, o --solo-plan para producir el plan y cerrar sin "
+            "ejecutarlas. No hay valor por defecto: correr media cadena tiene "
+            "que ser un acto, no un olvido.",
+            file=sys.stderr,
+        )
         return 2
 
     declarado = modo_declarado(args)
@@ -522,11 +573,9 @@ def main(argv=None):
         )
         # Se registra al volver, no antes: el run_id nace dentro de ejecutar. Una
         # corrida nueva siempre frena en el Gate de entrada, así que el hecho
-        # queda escrito mucho antes de que corra la primera unidad.
-        if ruta_developer:
-            store.append(
-                run_id, EVENTO_DEVELOPER, "plataforma", {"ruta": str(ruta_developer)}
-            )
+        # queda escrito mucho antes de que corra la primera unidad. Se escribe
+        # haya cadena o no: la ausencia también es una decisión y se anota.
+        store.append(run_id, EVENTO_CADENA, "plataforma", hecho_de_cadena(ruta_developer))
         print(run_id)
         return 0
 

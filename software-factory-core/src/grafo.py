@@ -76,13 +76,32 @@ SIN_DEVELOPER = "plan_verificado"
 # corrida. Que el cambio esté en la versión de una Agent Definition no alcanza:
 # la corrida tiene que poder explicarse sola.
 EVENTO_GATES = "gates_de_la_cadena"
-GATES_DE_LA_CADENA = {
-    "gates": ["entrada", "salida"],
-    "suprimido": "salida_de_plan",
-    "motivo": "aprobar el plan y despues aprobar la entrega que sale de el es "
-    "aprobar dos veces lo mismo; la defensa contra un plan malo es el techo de "
-    "la cadena. Requirement Agent 1.1.",
-}
+EVENTO_REGIMEN_INCUMPLIDO = "regimen_incumplido"
+
+MOTIVO_SUPRESION = (
+    "aprobar el plan y despues aprobar la entrega que sale de el es aprobar dos "
+    "veces lo mismo; la defensa contra un plan malo es el techo de la cadena. "
+    "Requirement Agent 1.1."
+)
+
+# Los dos cierres en los que la corrida hizo lo que se propuso. Un rechazo humano
+# o un escalamiento también cierran, pero no prometen haber cumplido el régimen.
+RESULTADOS_COMPLETOS = ("entregado", SIN_DEVELOPER)
+
+
+def regimen_de_gates(hay_cadena):
+    """El régimen que esta corrida va a cumplir, según tenga cadena o no.
+
+    **No es una constante, y eso es lo importante.** Una corrida sin Developer no
+    abre Gate de salida porque no hay entrega que aprobar: declarar dos Gates y
+    abrir uno hace que el registro se contradiga a sí mismo. El régimen se
+    declara al abrir la corrida y se comprueba al cerrarla.
+    """
+    return {
+        "gates": ["entrada", "salida"] if hay_cadena else ["entrada"],
+        "suprimido": "salida_de_plan",
+        "motivo": MOTIVO_SUPRESION,
+    }
 
 # El hecho que fija con qué se produce esta corrida. Se escribe una sola vez, al
 # abrirla, y no se vuelve a tocar: el Operational State no admite update.
@@ -147,6 +166,20 @@ class FalloDeInfraestructura(RuntimeError):
     def __init__(self, mensaje, costo=0.0):
         super().__init__(mensaje)
         self.costo = costo
+
+
+class RegimenIncumplido(RuntimeError):
+    """La corrida cerró sin cumplir el régimen de Gates que ella misma declaró.
+
+    Es un fallo de la plataforma, no del agente ni del pedido: significa que el
+    registro se contradice. Una corrida que declara dos Gates y cierra con uno no
+    es una corrida a medias, es evidencia que miente sobre lo que ocurrió, y la
+    evidencia es lo único que la fábrica tiene.
+
+    Se levanta en vez de cerrar en verde. La corrida queda abierta y el hecho
+    queda escrito: es preferible una corrida sin cerrar a un `run_cerrada` que
+    afirma algo falso.
+    """
 
 
 class UnidadAmbigua(RuntimeError):
@@ -252,6 +285,79 @@ def abrir_checkpointer(ruta=RUTA_CHECKPOINTER_POR_DEFECTO):
 
 
 # --- nodos ------------------------------------------------------------------
+
+
+def regimen_declarado(store, run_id):
+    """El régimen que la corrida declaró al abrirse. `None` si no consta.
+
+    `None` significa que la corrida es anterior al registro del régimen, no que
+    no tenga régimen: no se puede comprobar lo que nadie declaró.
+    """
+    for evento in store.leer_run(run_id):
+        if evento["tipo"] == EVENTO_GATES:
+            return evento["payload"]
+    return None
+
+
+def gates_de(store, run_id):
+    """`(abiertos, aprobados)` de una corrida, en orden de aparición."""
+    abiertos, aprobados = [], []
+    for evento in store.leer_run(run_id):
+        payload = evento["payload"]
+        if evento["tipo"] == "gate_abierto":
+            abiertos.append(payload.get("gate"))
+        elif evento["tipo"] == "gate_resuelto" and payload.get("decision") == "aprobado":
+            aprobados.append(payload.get("gate"))
+    return abiertos, aprobados
+
+
+def verificar_regimen(store, run_id, resultado):
+    """Comprueba que la corrida cumplió el régimen que declaró. Levanta si no.
+
+    Se aplica solo a los cierres que afirman haber completado el trabajo. Un
+    rechazo en un Gate o un escalamiento cierran legítimamente sin haber abierto
+    todos los Gates: no prometieron lo contrario.
+
+    Comprueba las dos direcciones. Que no falte ninguno de los declarados, y que
+    no se haya abierto ninguno que no se declaró: las dos son el registro
+    contradiciéndose, y da igual para qué lado.
+    """
+    if resultado not in RESULTADOS_COMPLETOS:
+        return
+
+    declarado = regimen_declarado(store, run_id)
+    if declarado is None:
+        return
+
+    esperados = list(declarado.get("gates") or [])
+    abiertos, aprobados = gates_de(store, run_id)
+    faltan = [g for g in esperados if g not in aprobados]
+    de_mas = [g for g in abiertos if g not in esperados]
+    if not faltan and not de_mas:
+        return
+
+    detalle = {
+        "resultado": resultado,
+        "declarados": esperados,
+        "abiertos": abiertos,
+        "aprobados": aprobados,
+        "faltan": faltan,
+        "de_mas": de_mas,
+    }
+    store.append(run_id, EVENTO_REGIMEN_INCUMPLIDO, PLATAFORMA, detalle)
+    raise RegimenIncumplido(
+        "la corrida %s declaró el régimen de Gates %s y cierra con resultado '%s' "
+        "habiendo aprobado %s. Falta: %s. De más: %s. No se cierra en verde una "
+        "corrida cuyo registro se contradice: revisá qué etapa no corrió."
+        % (
+            run_id,
+            esperados,
+            resultado,
+            aprobados or "ninguno",
+            faltan or "nada",
+            de_mas or "nada",
+        )
+    )
 
 
 def _hubo_apertura(store, run_id, gate):
@@ -410,6 +516,11 @@ def _nodo_fin(store, borrar_trabajo_fn=None):
     def nodo(estado):
         run_id = estado["run_id"]
         resultado = estado["resultado"] or "entregado"
+
+        # Antes que nada: que la corrida haya cumplido lo que declaró. Si no,
+        # levanta y no cierra. El directorio tampoco se borra: si el registro se
+        # contradice, lo último que hay que hacer es destruir lo que quedó.
+        verificar_regimen(store, run_id, resultado)
 
         if borrar_trabajo_fn is not None and estado.get("directorio"):
             decision = gates.resolucion(store, run_id, "salida")
@@ -608,7 +719,9 @@ def ejecutar(
     if modo == MODO_MODELO and modelo:
         hecho_modo["modelo"] = modelo
     store.append(run_id, EVENTO_MODO, PLATAFORMA, hecho_modo)
-    store.append(run_id, EVENTO_GATES, PLATAFORMA, dict(GATES_DE_LA_CADENA))
+    store.append(
+        run_id, EVENTO_GATES, PLATAFORMA, regimen_de_gates(ejecutar_unidades_fn is not None)
+    )
 
     estado = EstadoGrafo(
         run_id=run_id,
