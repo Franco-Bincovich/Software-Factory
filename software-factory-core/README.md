@@ -62,8 +62,27 @@ T15, que invoca al modelo con la credencial que lee de `.env`.
 
 ```
 python3.12 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pip install -r requirements.lock
 ```
+
+**Para instalar se usa el lock; para agregar una dependencia se edita
+`requirements.txt`.** Los dos archivos no son intercambiables:
+
+| Archivo | Qué tiene | Cuándo se toca |
+|---|---|---|
+| `requirements.txt` | las cinco dependencias directas | al agregar o subir una dependencia |
+| `requirements.lock` | las 47 del árbol completo, con versión exacta | nunca a mano; se regenera |
+
+Después de tocar `requirements.txt`, el lock se regenera instalando desde él y
+congelando el resultado, y se le vuelve a poner el encabezado de dos líneas:
+
+```
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pip freeze > requirements.lock
+```
+
+Instalar desde `requirements.txt` también funciona, pero resuelve las
+transitivas al día y el árbol queda distinto del que se probó.
 
 LangGraph arrastra `langchain-core` como dependencia transitiva. Está en el
 árbol y no se usa: ADR-006 punto 8 prohíbe programar contra LangChain, no

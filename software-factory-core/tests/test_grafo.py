@@ -1,4 +1,4 @@
-"""Criterio de aceptación de T14. Doce tests, uno por fila de la tabla.
+"""Criterio de aceptación de T14. Veinte tests, uno por fila de la tabla.
 
 Cada test corre contra un Operational State y un checkpointer temporales, y
 contra un Vault temporal. La base real y el Vault real nunca se abren.

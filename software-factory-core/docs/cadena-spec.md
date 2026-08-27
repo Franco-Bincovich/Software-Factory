@@ -318,7 +318,7 @@ cambiaría en silencio quién ejecutó las unidades.
 
 ## Criterio de aceptación
 
-`tests/test_cadena.py`, diecisiete tests contra un Operational State, un
+`tests/test_cadena.py`, dieciocho tests contra un Operational State, un
 checkpointer y un directorio de trabajo temporales.
 
 | Cubre | Qué comprueba |
