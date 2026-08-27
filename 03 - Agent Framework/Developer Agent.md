@@ -1,7 +1,8 @@
 ---
 titulo: Developer Agent
 tipo: agent-definition
-estado: propuesto
+estado: aceptado
+aprobado: 2026-08-26
 version: 1.0
 owner: CEO
 actualizado: 2026-08-26
@@ -32,7 +33,7 @@ que aquel produce.
 **Nombre canónico:** Developer Agent. Es un Core Agent según ADR-001, y cumple
 ese rol y solo ese rol.
 **Versión:** 1.0
-**Estado:** propuesto. No se instancia hasta que esta definición esté aprobada.
+**Estado:** activo.
 
 Identidad propia y distinta de la de cualquier persona, según el punto 1 de
 ADR-009. Los Agent Runs heredan esta identidad y se distinguen por el
@@ -328,9 +329,10 @@ que define lo que devuelve; el [[Ruleset mecánico]], que define qué tiene que
 cumplir el código; y **un verificador estructural de entregas**, que evalúe las
 nueve reglas de validez del contrato.
 
-**Los tres primeros existen. El cuarto no.** Mientras no exista, esta Agent
-Definition no se puede instanciar: sin él, el campo 7 quedaría evaluado por el
-propio Agent Run, que es exactamente lo que ADR-003 prohíbe.
+**Los cuatro existen.** El verificador estructural de entregas era el que
+faltaba cuando esta definición se escribió, y es lo que impedía instanciarla: sin
+él, el campo 7 quedaría evaluado por el propio Agent Run, que es exactamente lo
+que ADR-003 prohíbe. Con los cuatro en su lugar, la definición se instancia.
 
 ---
 
@@ -392,7 +394,7 @@ Cada uno con lo que elegí y de dónde lo saqué.
 | 4 | **Las tres listas del alcance de decisión** (campo 6) | Analogía con el Requirement, más las prohibiciones del Contrato de Entrega |
 | 5 | **Los ocho ítems de evidencia** (campo 12), incluido el 8 —ruta y borrado del directorio—, que no tiene equivalente en el Requirement | El campo 12 del Requirement, extendido por el directorio descartable |
 | 6 | **Dependencia del Requirement Agent y el orden** entre los dos (campo 13) | La cadena de custodia del Roadmap |
-| 7 | **Que falta el verificador de entregas** y que sin él esta definición no se instancia | Campo 7 de ADR-003 y punto 3 de ADR-005 |
+| 7 | **Que hacía falta el verificador de entregas** y que sin él esta definición no se instanciaba. Ya existe | Campo 7 de ADR-003 y punto 3 de ADR-005 |
 | 8 | **Memory: none, con la lectura de entregas aprobadas diferida** | El campo 11 del Requirement, con el mismo argumento |
 | 9 | **Que los techos son por unidad y no por plan**, con la consecuencia de los USD 5 en un plan de diez unidades | Se sigue de "una unidad por corrida" |
 | 10 | **Qué del Ruleset mecánico aplica**: tres reglas de once | Lectura del Ruleset contra los cuatro entregables |
