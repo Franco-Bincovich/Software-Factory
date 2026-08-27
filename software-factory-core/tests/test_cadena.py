@@ -21,6 +21,7 @@ sys.path.insert(0, str(RAIZ))
 import cadena  # noqa: E402
 import gates  # noqa: E402
 import grafo  # noqa: E402
+from grafo import UnidadAmbigua  # noqa: E402
 import presupuesto  # noqa: E402
 from agent_loader import cargar  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
@@ -167,6 +168,19 @@ def developer_que_corrige(registro):
                 a for a in entrega["archivos"] if a["ruta"] != "demo.html"
             ]
             return entrega
+        return producir_entrega_stub(
+            unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
+        )
+
+    return producir
+
+
+def developer_que_declara_ambigua(unidad_id, motivo):
+    """Devuelve la entrega vacía del contrato para esa unidad."""
+
+    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault):
+        if unidad["id"] == unidad_id:
+            raise UnidadAmbigua(motivo, costo=0.05)
         return producir_entrega_stub(
             unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
         )
@@ -398,6 +412,42 @@ class DetencionDelPlan(BaseCadena):
         (registrado,) = self.de_tipo(run, "directorio_trabajo")
         self.assertTrue(Path(registrado["payload"]["ruta"]).exists())
         self.assertEqual(self.de_tipo(run, "directorio_borrado"), [])
+
+
+# --- 4b — la unidad ambigua escala sin reintentar ---------------------------
+
+
+class UnidadAmbiguaDetieneElPlan(BaseCadena):
+    def test_no_se_reintenta_y_detiene_el_plan(self):
+        motivo = "La unidad se contradice con U1: pide validar y no validar el mismo campo."
+        run, plan, estado = self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_declara_ambigua("U3", motivo)
+        )
+        run_u3 = [
+            e["payload"]["run_developer"]
+            for e in self.de_tipo(run, "unidad_lanzada")
+            if e["payload"]["unidad"] == "U3"
+        ][0]
+
+        # Se registró como hecho, con el motivo que dio el agente.
+        (ambigua,) = self.de_tipo(run_u3, "unidad_ambigua")
+        self.assertEqual(ambigua["payload"]["motivo"], motivo)
+        self.assertEqual(ambigua["actor"], "developer-agent")
+
+        # No fue al verificador y no se reintentó: una sola producción, cero
+        # verificaciones. Reintentar sería mandar a adivinar lo que el contrato
+        # prohíbe adivinar.
+        self.assertEqual(self.de_tipo(run_u3, "verificacion_ejecutada"), [])
+        self.assertEqual(self.de_tipo(run_u3, "entrega_producida"), [])
+
+        # Pero el costo se cobró igual: la invocación se pagó.
+        self.assertAlmostEqual(presupuesto.consumo(self.store, run_u3)["costo"], 0.05)
+
+        # Y el plan se detuvo: U2 no se lanzó.
+        (detenido,) = self.de_tipo(run, "plan_detenido")
+        self.assertEqual(detenido["payload"]["motivo"], "escalado_por_unidad_ambigua")
+        self.assertEqual(detenido["payload"]["sin_ejecutar"], ["U2"])
+        self.assertEqual(estado["resultado"], "escalado_por_unidad_fallida")
 
 
 # --- 5 — el techo de la cadena ----------------------------------------------

@@ -23,7 +23,7 @@ from langgraph.graph import END, START, StateGraph
 
 import presupuesto
 import verificador_entrega
-from grafo import FalloDeInfraestructura, _Techos, leer_contexto_vault
+from grafo import FalloDeInfraestructura, UnidadAmbigua, _Techos, leer_contexto_vault
 
 AGENTE = "developer-agent"
 PLATAFORMA = "plataforma"
@@ -98,6 +98,24 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 {"detalle": str(fallo), "iteracion": estado["iteracion"]},
             )
             return {"resultado": "escalado_por_infraestructura"}
+        except UnidadAmbigua as ambigua:
+            # No va al verificador y no cuenta como iteración mala. El contrato
+            # declara válida la entrega vacía ante una unidad ambigua, y el
+            # criterio 6 del piso de ADR-004 manda escalar. Reintentarla tres
+            # veces quemaría el techo en una unidad que ya dijo que no se puede.
+            if ambigua.costo:
+                presupuesto.registrar_consumo(store, run_id, ambigua.costo)
+            store.append(
+                run_id,
+                "unidad_ambigua",
+                AGENTE,
+                {
+                    "unidad": estado["unidad"]["id"],
+                    "motivo": ambigua.motivo,
+                    "iteracion": estado["iteracion"],
+                },
+            )
+            return {"resultado": "escalado_por_unidad_ambigua"}
 
         if isinstance(producido, tuple):
             entrega, costo = producido

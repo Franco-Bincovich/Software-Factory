@@ -39,6 +39,19 @@ RE_BACKTICK = re.compile(r"`([^`]+)`")
 RE_IDENTIFICADOR = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z]+(?:[A-Z][a-z0-9]*)+\b")
 
 
+# Los identificadores que este verificador puede emitir. C9 no está: la cumple el
+# esquema con `additionalProperties: false`, así que un campo de más sale como C0.
+#
+# Existe para que el prompt del productor de entregas no se desvíe de lo que acá
+# se comprueba de verdad: hay un test que exige que el prompt nombre cada uno.
+REGLAS = (
+    "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8",
+    "R1", "R3", "R8",
+    "P1", "P2", "P3",
+    "V1", "V2", "V3", "V4",
+)
+
+
 def _incumplimiento(regla, detalle, archivo=None):
     return {"regla": regla, "archivo": archivo, "detalle": detalle}
 

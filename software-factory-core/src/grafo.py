@@ -149,6 +149,26 @@ class FalloDeInfraestructura(RuntimeError):
         self.costo = costo
 
 
+class UnidadAmbigua(RuntimeError):
+    """El productor devolvió la entrega vacía del contrato, con su motivo.
+
+    No es un defecto a corregir y no es un fallo de infraestructura: el Contrato
+    de Entrega declara esta salida válida cuando la unidad es ambigua o
+    contradictoria, y dispara el criterio 6 del piso de ADR-004. Se escala.
+
+    Vive acá y no en el productor por lo mismo que `FalloDeInfraestructura`: es
+    vocabulario que el productor le habla al grafo, y el grafo no importa
+    productores.
+
+    Lleva el costo ya consumido: la invocación se pagó igual.
+    """
+
+    def __init__(self, motivo, costo=0.0):
+        super().__init__(motivo)
+        self.motivo = motivo
+        self.costo = costo
+
+
 class _Techos(object):
     """Portador de los tres techos con la forma que T12 espera de una definición.
 
