@@ -1,7 +1,8 @@
 ---
 titulo: Contrato de Entrega del Developer
 tipo: contrato
-estado: propuesto
+estado: aceptado
+aprobado: 2026-08-26
 version: 1.0
 owner: CEO
 actualizado: 2026-08-26
