@@ -399,13 +399,26 @@ lo tanto parcial: no detecta un secreto guardado bajo un nombre inocente.
 
 ### Dónde vive el archivo
 
+La ruta se resuelve en dos pasos. Si `SOFTWARE_FACTORY_STATE_DIR` está definida,
+el estado cuelga de ese directorio, y es la forma principal de cambiarlo:
+
 ```
-/Users/franbincovich/Desktop/VSCode/software-factory-state/factory.db
+$SOFTWARE_FACTORY_STATE_DIR/factory.db
 ```
 
-Directorio hermano del vault y de este repo. Si no existe, se crea al abrir el
-almacén. La ruta es configurable por constructor; los tests siempre usan una
-base temporal.
+Si no está definida, la ubicación se ancla en la del propio módulo y cae en el
+directorio hermano del vault y de este repo, que es donde vive hoy:
+
+```
+<hermana-del-repo>/software-factory-state/factory.db
+```
+
+De ese mismo directorio cuelgan `trabajo/` y `checkpointer/`. Una sola variable
+gobierna las tres rutas a propósito: con una variable por ruta, el estado podría
+quedar partido en discos distintos sin que nadie avise.
+
+Si el directorio no existe, se crea al abrir el almacén. La ruta también es
+configurable por constructor; los tests siempre usan una base temporal.
 
 ### Advertencia — R8
 
