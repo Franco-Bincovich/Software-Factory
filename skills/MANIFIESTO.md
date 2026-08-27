@@ -10,7 +10,7 @@ Regla: ninguna skill externa se usa si no está listada acá.
 | `skill-creator` | https://github.com/anthropics/skills | `3b3fad96af16a10759d930941b4520ba0c40edae` | 2026-08-27 | **`.py` (10):** `scripts/__init__.py`, `scripts/aggregate_benchmark.py`, `scripts/generate_report.py`, `scripts/improve_description.py`, `scripts/package_skill.py`, `scripts/quick_validate.py`, `scripts/run_eval.py`, `scripts/run_loop.py`, `scripts/utils.py`, `eval-viewer/generate_review.py` · **`.html` (2):** `assets/eval_review.html`, `eval-viewer/viewer.html` | |
 | `webapp-testing` | https://github.com/anthropics/skills | `3b3fad96af16a10759d930941b4520ba0c40edae` | 2026-08-27 | **`.py` (4):** `scripts/with_server.py`, `examples/console_logging.py`, `examples/element_discovery.py`, `examples/static_html_automation.py` | |
 | `mcp-builder` | https://github.com/anthropics/skills | `3b3fad96af16a10759d930941b4520ba0c40edae` | 2026-08-27 | **`.py` (2):** `scripts/connections.py`, `scripts/evaluation.py` · **`.xml` (1):** `scripts/example_evaluation.xml` | |
-| `frontend-design` | https://github.com/anthropics/skills | `3b3fad96af16a10759d930941b4520ba0c40edae` | 2026-08-27 | ninguno | |
+| `frontend-design` | https://github.com/anthropics/skills | `3b3fad96af16a10759d930941b4520ba0c40edae` | 2026-08-27 | ninguno | Franco Bincovich — 2026-08-27 |
 | `theme-factory` | https://github.com/anthropics/skills | `3b3fad96af16a10759d930941b4520ba0c40edae` | 2026-08-27 | **`.pdf` (1):** `theme-showcase.pdf` | |
 
 ## Reglas de vendoring
