@@ -207,6 +207,31 @@ Developer no hay entrega que aprobar.
 relleno; el modo modelo usa los dos reales. Una corrida no produce el plan contra
 el modelo y el código con el stub, ni al revés.
 
+## Heredar un plan ya verificado
+
+Un plan que se produjo y se pagó no tiene por qué volver a producirse para poder
+ejecutarse.
+
+```
+./.venv/bin/python correr.py --desde-corrida <run_id> \
+    --definicion-developer "…/Developer Agent.md"
+```
+
+**El plan se identifica por la corrida que lo produjo**, no por su `plan_id`, que
+lo declara el agente. La corrida heredera salta la fase Requirement, copia el
+pedido, y declara en `plan_heredado` de dónde vino el plan, de qué veredicto se
+fía y **con qué modo se produjo el original** — sin eso, una entrega hecha por un
+modelo sobre un plan hecho por otro no se puede interpretar después.
+
+**El techo se hereda descontado:** el del pedido menos lo gastado en todo el
+linaje. El techo pertenece al trabajo, no a la corrida; si cada corrida
+arrancara con el techo entero, partir el trabajo en dos sería la forma de
+evadirlo.
+
+**Heredar un plan que ya produjo código se niega.** Con `--reejecutar` se acepta
+y la corrida declara a qué ejecuciones sucede: el plan es inmutable, sus
+ejecuciones se suceden.
+
 ## Productor real de Entregas
 
 El equivalente de T15 para el Developer: la función que invoca al modelo y
@@ -490,7 +515,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Ciento noventa y cuatro tests, uno por cada fila de los criterios de aceptación
+Doscientos doce tests, uno por cada fila de los criterios de aceptación
 de las ocho tareas, más los que cubren lo que se fue arreglando después y las
 piezas de V0.2:
 
@@ -509,6 +534,7 @@ piezas de V0.2:
 | `test_cadena.py` | 18 | la cadena completa, el reintento, la detención y el techo de la cadena |
 | `test_productor_entrega.py` | 25 | el productor de entregas, con cliente falso |
 | `test_correr_cadena.py` | 18 | la costura entre la CLI y la cadena, y el régimen declarado |
+| `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.

@@ -148,6 +148,75 @@ Requirement, y por la misma razón: lo exige el campo 9 de la Agent Definition.
 
 ---
 
+## Heredar un plan ya verificado
+
+Un plan que se produjo y se pagó no tiene por qué volver a producirse para poder
+ejecutarse.
+
+```
+./.venv/bin/python correr.py --desde-corrida <run_id> \
+    --definicion-developer "…/Developer Agent.md"
+```
+
+**El plan se identifica por la corrida que lo produjo, no por su `plan_id`.** Ese
+campo lo declara el agente —el stub emite siempre el mismo— y dos planes
+distintos pueden traerlo igual. Dentro de esa corrida, el plan es el de la última
+`iteracion_producida` cuya verificación dio válido.
+
+**No se vuelve a verificar.** El plan es inmutable y su veredicto está
+registrado; reverificarlo sería aplicarle las reglas de hoy a algo juzgado bajo
+las de entonces, y daría a entender que el registro puede estar mal. Lo que se
+anota es **de qué verificación nos fiamos**, por id de evento.
+
+La corrida heredera **salta la fase Requirement**: va del Gate de entrada directo
+a ejecutar las unidades. Es un parámetro de `crear_grafo` que cambia una sola
+arista, no un grafo aparte, para que no haya dos definiciones del mismo grafo
+separándose con el tiempo.
+
+**Lleva Gate de entrada**, y no por formalidad: comprometer el presupuesto del
+Developer sobre un plan que puede ser viejo es una decisión de recursos, que es
+para lo que ADR-004 pone ese Gate. Lo que somete es el plan y el techo con su
+descuento, no el pedido.
+
+```
+pedido_heredado  {…el pedido copiado…}
+plan_heredado    {de_corrida, origen, plan_id, iteracion, veredicto_evento,
+                  modo_de_origen, ejecuciones_previas, reejecuta}
+```
+
+El pedido viaja **copiado y con tipo propio**: `pedido_recibido` significa "entró
+por Intake" y esto no entró por ahí. Una corrida tiene que poder leerse sola.
+
+`modo_de_origen` registra con qué se produjo el plan original. Sin eso, leer una
+entrega producida por un modelo sobre un plan producido por otro —o por el stub—
+no se puede interpretar después. El modo de la heredera es propio: son dos
+corridas y dos hechos, así que ensayar con `--stub` la ejecución de un plan
+producido por el modelo es legítimo y queda dicho.
+
+### El techo se hereda descontado
+
+**El techo pertenece al trabajo, no a la corrida.** El pedido dijo que esto puede
+costar hasta cierto monto y producir el plan ya consumió parte. La corrida
+heredera arranca con **el techo del pedido menos lo gastado en todo el linaje**
+—la corrida de origen, las herederas anteriores y todas sus corridas de
+Developer—. Si no queda nada, se niega antes de gastar.
+
+Si cada corrida arrancara con el techo entero, partir el trabajo en dos corridas
+sería la forma de evadirlo, y un techo evadible no es un techo.
+
+### Reejecutar es un acto declarado
+
+Heredar un plan que **ya produjo código** se niega. Reejecutarlo deja el registro
+con dos respuestas a "qué código satisface este plan", que es la misma clase de
+problema que el registro contradiciéndose.
+
+Con `--reejecutar` se acepta, y la corrida nueva declara en `ejecuciones_previas`
+a cuáles sucede. El plan es inmutable; sus ejecuciones son hechos que se suceden.
+
+Heredar de una corrida que a su vez heredó **resuelve a la raíz**: `de_corrida`
+guarda lo que se nombró y `origen` la corrida que produjo el plan, así que el
+linaje y el descuento se calculan sobre una sola cadena.
+
 ## El techo de la cadena
 
 Los techos del Developer son **por unidad**. Por encima de ellos, **el techo de
@@ -205,6 +274,7 @@ Ninguno exigió tocar el esquema de la base ni los triggers de inmutabilidad.
 |---|---|---|
 | `gates_de_la_cadena` | pedido | Bajo qué régimen de Gates corrió, según tenga cadena o no |
 | `cadena_fijada` | pedido | Si la corrida tiene Developer, o el motivo de que no |
+| `pedido_heredado` · `plan_heredado` | pedido | De dónde vino el plan, de qué veredicto se fía y con qué modo se produjo |
 | `regimen_incumplido` | pedido | La corrida cerró sin cumplir lo que declaró. Nunca debería aparecer |
 | `directorio_trabajo` · `directorio_borrado` | pedido | Dónde se trabajó y cuándo se descartó |
 | `unidad_lanzada` · `unidad_entregada` · `unidad_fallida` | pedido | Qué unidad, en qué corrida |
@@ -262,6 +332,11 @@ checkpointer y un directorio de trabajo temporales.
 | Techo de la cadena | Corta antes de lanzar la unidad que lo pasaría |
 | Directorio | Un subdirectorio por unidad; se borra recién tras el Gate aprobado; no se borra si escaló; una ruta que escapa no se escribe |
 | Idempotencia | Reentrar no relanza ni repaga lo entregado, y reusa el directorio |
+
+`tests/test_herencia.py` cubre heredar un plan verificado: que ejecute sin
+producir uno nuevo, que las dos corridas queden atadas, que el techo se descuente
+sobre el linaje, que reejecutar sea explícito y que la reanudación de una
+heredera no vuelva a la fase Requirement.
 
 `tests/test_correr_cadena.py` cubre la costura entre la CLI y la cadena, que es
 donde estaba el hueco: que una corrida nueva sin declarar cadena no arranque y no
