@@ -58,10 +58,11 @@ distintos. Una skill puede vivir en el repositorio durante meses sin que ningún
 agente pueda usarla. El manifiesto registra lo primero; la columna "aprobado por"
 registra lo segundo.
 
-## Evidencia — dos correcciones durante la implementación
+## Evidencia — tres correcciones durante la implementación
 
-Las dos son falsos verdes: verificaciones que dieron bien y no debían. Se
-documentan porque justifican las reglas mejor que cualquier argumento abstracto.
+Las tres son fallas de integridad silenciosas. Las dos primeras son falsos
+verdes: verificaciones que dieron bien y no debían. Se documentan porque
+justifican las reglas mejor que cualquier argumento abstracto.
 
 **1. Verificación contra el clon local en vez de contra el upstream.** La primera
 verificación dio 49 de 49 idénticos. Comparaba contenido CRLF contra contenido
@@ -78,8 +79,21 @@ un nivel arriba: `core.autocrlf` le agregaba un CR al final de cada línea y
 Se había blindado el contenido y quedado desprotegida la herramienta que lo
 verifica.
 
-Ninguna de las dos apareció en la máquina donde se hizo el trabajo. Las dos
-aparecieron al verificar desde un clon limpio, sin el estado previo.
+**3. Conversión introducida por la herramienta de edición.** Al firmar el
+manifiesto, una edición con Python en Windows reescribió el archivo entero en
+CRLF: `open(..., "w")` traduce cada `\n` al guardar. El diff pasó de una
+línea a 28 insertions / 28 deletions. Con `-text` ya en vigor, git no lo iba a
+normalizar, y el CRLF habría entrado al commit en silencio en el mismo archivo
+que declara la política de bytes exactos. Se detectó por el `--stat` desanchado,
+se restauró desde HEAD y se rehizo la edición en modo binario.
+
+Ninguna de las dos primeras apareció en la máquina donde se hizo el trabajo:
+las dos aparecieron al verificar desde un clon limpio, sin el estado previo.
+
+Los tres casos son el mismo mecanismo en tres momentos distintos — checkout, clon
+en otra máquina y edición. El tercero es el más riesgoso porque `.gitattributes`
+no lo cubre: al impedir que git normalice, se pierde también su red de
+contención.
 
 ## Lección transferible
 
@@ -108,3 +122,9 @@ versionado, no capacidad disponible.
   está diseñada. La regla tercera la exige sin decir cómo se construye.
 - **Qué se hace cuando el upstream de una skill desaparece.** La copia congelada
   sobrevive, pero no hay política de fin de vida.
+
+## Regla operativa
+
+Toda edición programática de archivos bajo `skills/` se hace en modo binario. Un
+diff cuyo tamaño no se corresponde con el cambio pedido es señal de conversión de
+saltos de línea y motivo de restaurar desde HEAD antes de commitear.
