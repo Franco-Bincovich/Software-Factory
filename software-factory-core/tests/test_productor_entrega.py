@@ -81,6 +81,12 @@ ENTREGA = {
     "supuestos": [],
 }
 
+# ADR-014: dónde deposita y qué hay ya depositado.
+PAQUETE = {
+    "directorio_trabajo": "/estado/trabajo/abc123/U2",
+    "ya_depositado": ["U1/demo.html", "U1/pruebas.html", "U1/src/leer.js"],
+}
+
 INCUMPLIMIENTOS = [
     {"regla": "C6", "archivo": None, "detalle": "Falta demo.html."},
     {"regla": "C7", "archivo": "demo.html", "detalle": "Reimplementa la lógica."},
@@ -155,6 +161,7 @@ def producir(cliente_kwargs=None, **kwargs):
         kwargs.get("entrega_anterior"),
         kwargs.get("incumplimientos", []),
         kwargs.get("contexto_vault", CONTEXTO_VAULT),
+        kwargs.get("paquete", PAQUETE),
     )
     return resultado, cliente
 
@@ -227,6 +234,39 @@ class PromptInicial(unittest.TestCase):
     def test_el_sistema_explica_la_entrega_vacia(self):
         self.assertIn("No adivines", self.sistema)
 
+    def test_lleva_el_domicilio_y_el_inventario_del_paquete(self):
+        """ADR-014: el agente ve dónde deposita y qué dejaron las otras unidades."""
+        self.assertIn(PAQUETE["directorio_trabajo"], self.mensaje)
+        for ruta in PAQUETE["ya_depositado"]:
+            self.assertIn(ruta, self.mensaje)
+
+    def test_le_dice_que_los_nombres_fijos_no_chocan_con_otra_unidad(self):
+        """Lo que en la corrida real el agente adivinó, y adivinó mal."""
+        self.assertIn("no chocan", self.mensaje)
+        self.assertIn("No los renombres", self.mensaje)
+
+    def test_el_paquete_va_en_el_mensaje_y_no_en_el_prefijo_cacheado(self):
+        """Varía por unidad: en el system prompt invalidaría el caché siempre."""
+        self.assertNotIn(PAQUETE["directorio_trabajo"], self.sistema)
+        self.assertNotIn("Dónde trabajás", self.sistema)
+
+
+class PromptInicialSinPaquete(unittest.TestCase):
+    def test_sin_domicilio_no_se_inventa_una_seccion_vacia(self):
+        """Un productor invocado sin paquete no le habla al agente de carpetas."""
+        (_, _), cliente = producir(
+            {"respuesta": Respuesta(json.dumps(ENTREGA))}, paquete=None
+        )
+        self.assertNotIn("Dónde trabajás", cliente.llamadas[0]["messages"][0]["content"])
+
+    def test_la_primera_unidad_lo_dice_en_vez_de_listar_nada(self):
+        paquete = {"directorio_trabajo": "/estado/trabajo/abc123/U1", "ya_depositado": []}
+        (_, _), cliente = producir(
+            {"respuesta": Respuesta(json.dumps(ENTREGA))}, paquete=paquete
+        )
+        mensaje = cliente.llamadas[0]["messages"][0]["content"]
+        self.assertIn("sos la primera unidad", mensaje)
+
 
 # --- 4 — el prompt no se desvía del verificador ------------------------------
 
@@ -283,6 +323,17 @@ class PromptDeCorreccion(unittest.TestCase):
         mensaje = cliente.llamadas[0]["messages"][0]["content"]
         self.assertIn("Producí la Entrega para esta unidad", mensaje)
         self.assertNotIn("fue rechazada por el verificador", mensaje)
+
+    def test_la_correccion_tambien_lleva_el_domicilio_y_el_inventario(self):
+        """Corregir sin saber dónde aterriza repetiría el error del rechazo."""
+        (_, _), cliente = producir(
+            {"respuesta": Respuesta(json.dumps(ENTREGA))},
+            entrega_anterior=ENTREGA,
+            incumplimientos=INCUMPLIMIENTOS,
+        )
+        mensaje = cliente.llamadas[0]["messages"][0]["content"]
+        self.assertIn(PAQUETE["directorio_trabajo"], mensaje)
+        self.assertIn("U1/pruebas.html", mensaje)
 
 
 # --- 6 — la llamada ----------------------------------------------------------

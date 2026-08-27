@@ -27,6 +27,7 @@ import shutil
 from pathlib import Path
 
 import grafo_developer
+import operational_state
 import presupuesto
 from grafo import (
     EVENTO_PEDIDO_HEREDADO,
@@ -35,11 +36,21 @@ from grafo import (
     _Techos,
     definicion_a_dict,
 )
-from operational_state import DIR_ESTADO
+from operational_state import DIR_ESTADO, absoluta_desde, relativa_a
 
 AGENTE = "developer-agent"
 
 RAIZ_TRABAJO_POR_DEFECTO = DIR_ESTADO / "trabajo"
+
+
+def _base():
+    """El ancla contra la que se relativizan las rutas de los eventos.
+
+    Se busca en el módulo y no se congela en un import, para que los tests
+    puedan correr con un directorio de estado temporal —que es la única forma de
+    comprobar de verdad que un evento no lleva rutas de la máquina—.
+    """
+    return operational_state.DIR_ESTADO
 
 
 class CicloDeDependencias(RuntimeError):
@@ -133,9 +144,16 @@ def entrega_de(store, run_developer):
 
 
 def directorio_registrado(store, run_pedido):
+    """El directorio de la cadena, devuelto absoluto para poder escribir en él.
+
+    En el evento está guardado relativo al directorio de estado —ADR-014 punto
+    3—, así que acá se vuelve a expandir. La reanudación depende de esta función:
+    si devolviera lo que el evento dice tal cual, la corrida reanudada
+    escribiría contra una ruta relativa al proceso, que no es la misma carpeta.
+    """
     for evento in store.leer_run(run_pedido):
         if evento["tipo"] == "directorio_trabajo":
-            return evento["payload"]["ruta"]
+            return str(absoluta_desde(evento["payload"]["ruta"], _base()))
     return None
 
 
@@ -170,6 +188,28 @@ def directorio_de_unidad(directorio, unidad_id):
     la plataforma al depositarla.
     """
     return str(Path(directorio) / unidad_id)
+
+
+def ya_depositado(entregas_por_unidad):
+    """El inventario del directorio de la cadena, en rutas relativas a su raíz.
+
+    Es la mitad del paquete que ADR-014 exige: el domicilio no alcanza si el
+    agente no sabe qué hay ahí. Con esta lista, la decisión que en la corrida
+    real se tomó a ciegas —¿piso lo que dejó U1?— deja de ser una decisión.
+
+    **Sale del Operational State, no del disco.** ADR-003 manda que lo que un
+    agente lee se declare, y ADR-014 descartó por eso la opción de mirar la
+    carpeta. Además, leer del registro es lo que hace que una cadena reanudada
+    reciba exactamente el mismo inventario que la original.
+
+    Vacía para la primera unidad, porque todavía no hay nada depositado.
+    """
+    inventario = []
+    for uid in sorted(entregas_por_unidad):
+        entrega = entregas_por_unidad[uid] or {}
+        for archivo in entrega.get("archivos", []):
+            inventario.append("%s/%s" % (uid, archivo["ruta"]))
+    return inventario
 
 
 def escribir_entrega(directorio, entrega):
@@ -208,7 +248,12 @@ def borrar_directorio(store, run_pedido, ruta):
     """
     if ruta and Path(ruta).exists():
         shutil.rmtree(ruta)
-    store.append(run_pedido, "directorio_borrado", PLATAFORMA, {"ruta": ruta})
+    store.append(
+        run_pedido,
+        "directorio_borrado",
+        PLATAFORMA,
+        {"ruta": relativa_a(ruta, _base()) if ruta else ruta},
+    )
 
 
 # --- herencia de un plan ya verificado --------------------------------------
@@ -416,7 +461,12 @@ def nodo_ejecutar_unidades(
         directorio = directorio_registrado(store, run_pedido)
         if directorio is None:
             directorio = crear_directorio(raiz_trabajo, run_pedido)
-            store.append(run_pedido, "directorio_trabajo", PLATAFORMA, {"ruta": directorio})
+            store.append(
+                run_pedido,
+                "directorio_trabajo",
+                PLATAFORMA,
+                {"ruta": relativa_a(directorio, _base())},
+            )
 
         unidades_por_id = {u["id"]: u for u in plan["unidades"]}
         hechas = unidades_entregadas(store, run_pedido)
@@ -444,6 +494,7 @@ def nodo_ejecutar_unidades(
             resultado = _correr_unidad(
                 store, unidad, plan, unidades_por_id, entregas_por_unidad, run_pedido,
                 definicion_developer, definicion_dict, techos_developer, directorio,
+                ya_depositado(entregas_por_unidad),
                 producir_entrega_fn, ruta_vault, costo_iteracion,
             )
             runs.append(resultado["run_id"])
@@ -516,8 +567,8 @@ def _resumen(entregas_por_unidad, hechas):
 
 def _correr_unidad(
     store, unidad, plan, unidades_por_id, entregas_por_unidad, run_pedido,
-    definicion, definicion_dict, techos, directorio, producir_entrega_fn,
-    ruta_vault, costo_iteracion,
+    definicion, definicion_dict, techos, directorio, inventario,
+    producir_entrega_fn, ruta_vault, costo_iteracion,
 ):
     """Abre una corrida de Developer para una unidad y la corre hasta el final."""
     run_id = store.nuevo_run_id()
@@ -550,6 +601,11 @@ def _correr_unidad(
         unidad=unidad,
         contexto_unidades=contexto_de(unidad, unidades_por_id, entregas_por_unidad),
         directorio=directorio,
+        # ADR-014 punto 1: el domicilio y el inventario. El subdirectorio se
+        # calculaba antes recién al depositar, o sea después de producir: el
+        # agente decidía sin saber dónde aterrizaba lo que estaba escribiendo.
+        directorio_trabajo=directorio_de_unidad(directorio, unidad["id"]),
+        ya_depositado=inventario,
         entrega=None,
         incumplimientos=[],
         iteracion=0,
@@ -587,4 +643,5 @@ __all__ = [
     "preparar_herencia",
     "techo_heredado",
     "unidades_entregadas",
+    "ya_depositado",
 ]

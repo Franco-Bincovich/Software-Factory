@@ -39,7 +39,12 @@ import productor  # noqa: E402
 import productor_entrega  # noqa: E402
 from agent_loader import CargaFallida, cargar  # noqa: E402
 from intake import PedidoRechazado  # noqa: E402
-from operational_state import OperationalState  # noqa: E402
+from operational_state import (  # noqa: E402
+    RAIZ_REPO,
+    OperationalState,
+    absoluta_desde,
+    relativa_a,
+)
 
 # Costo nominal por iteración del stub. El productor real devuelve el costo
 # medido y este valor no se usa.
@@ -98,7 +103,7 @@ def producir_stub(pedido, plan_anterior, incumplimientos, contexto_vault):
 
 
 def producir_entrega_stub(unidad, contexto_unidades, entrega_anterior, incumplimientos,
-                          contexto_vault):
+                          contexto_vault, paquete=None):
     """Developer de relleno. Arma una Entrega mínima que pasa el verificador.
 
     No invoca a ningún modelo. Existe para que la cadena se pueda correr de punta
@@ -315,9 +320,13 @@ def hecho_de_cadena(ruta_developer):
     criterio que `modo_produccion_fijado`: una corrida que no anota esta decisión
     no se puede explicar sola — leyendo sus eventos no se distingue "nadie pidió
     cadena" de "se pidió y no se armó".
+
+    La ruta se guarda relativa al repositorio, que es donde vive la definición
+    —ADR-014 punto 3—. Una definición identificada por su ruta absoluta solo se
+    puede volver a encontrar en la máquina que corrió.
     """
     if ruta_developer:
-        return {"developer": str(ruta_developer)}
+        return {"developer": relativa_a(ruta_developer, RAIZ_REPO)}
     return {"developer": None, "motivo": MOTIVO_SOLO_PLAN}
 
 
@@ -335,12 +344,19 @@ def developer_para_reanudar(store, run_id, declarada):
     Los flags no eligen acá; a lo sumo contradicen. Reanudar con otra definición
     —o pedir cadena en una corrida abierta con `--solo-plan`— cambiaría en
     silencio quién ejecutó las unidades.
+
+    Lo registrado está relativo al repositorio y acá se expande: quien reanuda
+    necesita una ruta que se pueda abrir, no una que se pueda comparar. La
+    comparación con la declarada también se hace expandida, para que la misma
+    definición nombrada de dos formas no parezca una contradicción.
     """
     hecho = cadena_de(store, run_id)
     if hecho is None:
         return declarada
 
     registrada = hecho.get("developer")
+    if registrada is not None:
+        registrada = str(absoluta_desde(registrada, RAIZ_REPO))
     if declarada is None:
         return registrada
     if registrada is None:
@@ -350,7 +366,7 @@ def developer_para_reanudar(store, run_id, declarada):
             "y no se cambia al reanudarla. Para ejecutar unidades, abrí una "
             "corrida nueva." % run_id
         )
-    if str(declarada) != str(registrada):
+    if os.path.abspath(str(declarada)) != os.path.abspath(str(registrada)):
         raise DeveloperContradictorio(
             "la corrida %s se abrió con la definición de Developer '%s' y se la "
             "está reanudando con '%s'. Con qué corre la cadena es un hecho de la "

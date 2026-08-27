@@ -38,6 +38,32 @@ DIR_ESTADO = Path(
 
 RUTA_POR_DEFECTO = DIR_ESTADO / "factory.db"
 
+
+def relativa_a(ruta, base):
+    """La ruta como se guarda en un evento: relativa a una base, y en posix.
+
+    ADR-014 punto 3: una ruta absoluta en el registro convierte la evidencia en
+    algo que solo se entiende en la maquina que la produjo. `os.path.relpath`
+    —y no `Path.relative_to`— porque tiene que servir tambien cuando el destino
+    cae fuera de la base: devuelve una cadena de `..` en vez de romper, y esa
+    cadena tampoco lleva nombre de usuario adentro.
+
+    Separadores posix siempre. Un evento escrito en Windows y leido en macOS
+    tiene que decir lo mismo, que es todo el punto de guardar relativo.
+    """
+    return Path(os.path.relpath(str(ruta), str(base))).as_posix()
+
+
+def absoluta_desde(relativa, base):
+    """La ruta como se usa: la que salio de `relativa_a`, devuelta a absoluta.
+
+    `normpath` y no `resolve`: resolver seguiria los symlinks y devolveria un
+    domicilio distinto del que se guardo —en macOS `/tmp` es `/private/tmp`—.
+    Lo que se reconstruye tiene que ser la misma ruta, no una equivalente.
+    """
+    return Path(os.path.normpath(os.path.join(str(base), str(relativa))))
+
+
 # ADR-009 punto 8: toda accion registrada nombra a su actor.
 ACTORES_V01 = ("requirement-agent", "plataforma", "CEO")
 ACTORES_PROHIBIDOS = ("sistema",)

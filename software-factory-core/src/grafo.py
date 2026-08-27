@@ -51,11 +51,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 import gates
+import operational_state
 import presupuesto
 import verificador
 from agent_loader import cargar
 from intake import ingresar, texto_rastreable, validar
-from operational_state import DIR_ESTADO
+from operational_state import DIR_ESTADO, relativa_a
 
 RUTA_CHECKPOINTER_POR_DEFECTO = DIR_ESTADO / "checkpointer" / "checkpoints.db"
 
@@ -560,8 +561,14 @@ def _somete_salida(estado):
     State, y el Gate se resuelve abriendo los dos HTML del directorio de trabajo,
     no leyendo JSON en una terminal.
     """
+    directorio = estado.get("directorio")
     return {
-        "directorio_trabajo": estado.get("directorio"),
+        # Relativa al directorio de estado, ADR-014 punto 3. Quien resuelve el
+        # Gate la abre desde ahí; quien lee el evento seis meses después ya no
+        # está en la máquina que corrió, y una ruta absoluta no le dice nada.
+        "directorio_trabajo": (
+            relativa_a(directorio, operational_state.DIR_ESTADO) if directorio else directorio
+        ),
         "unidades": estado.get("entregas") or [],
         "como_se_verifica": "abrir pruebas.html y demo.html de cada unidad en el navegador",
     }

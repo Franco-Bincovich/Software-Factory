@@ -35,6 +35,10 @@ class EstadoDeveloper(TypedDict):
     `plan` viaja entero porque el verificador de entregas lo exige: sus reglas
     C1, C4 y V2 se comprueban contra la unidad tal como el plan la declara, no
     contra una copia que el Developer pudiera haber tocado.
+
+    `directorio` es el de la cadena entera; `directorio_trabajo` es el de esta
+    unidad. Son dos cosas distintas y la que le importa al agente es la segunda:
+    es el domicilio que ADR-014 exige que reciba.
     """
 
     run_id: str
@@ -43,6 +47,8 @@ class EstadoDeveloper(TypedDict):
     unidad: Dict[str, Any]
     contexto_unidades: List[Dict[str, Any]]
     directorio: str
+    directorio_trabajo: str
+    ya_depositado: List[str]
     entrega: Optional[Dict[str, Any]]
     incumplimientos: List[Dict[str, Any]]
     iteracion: int
@@ -75,6 +81,12 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
 
     Recibe siempre la entrega previa y la lista de incumplimientos, que es lo que
     el campo 9 de la Agent Definition exige para que reintentar sea corregir.
+
+    El sexto argumento es el paquete de ADR-014: dónde deposita y qué hay ya
+    depositado. Va como diccionario y no como dos posicionales más para que el
+    día que el paquete tenga que crecer, crezca sin cambiarle la firma a todo
+    productor existente. Que el paquete sea suficiente es el punto del ADR; que
+    sea ampliable es lo que hace que se pueda cumplir la próxima vez.
     """
 
     def nodo(estado):
@@ -87,6 +99,10 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 estado["entrega"],
                 estado["incumplimientos"],
                 contexto,
+                {
+                    "directorio_trabajo": estado["directorio_trabajo"],
+                    "ya_depositado": estado["ya_depositado"],
+                },
             )
         except FalloDeInfraestructura as fallo:
             if fallo.costo:
