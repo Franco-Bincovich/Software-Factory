@@ -35,12 +35,11 @@ from grafo import (
     _Techos,
     definicion_a_dict,
 )
+from operational_state import DIR_ESTADO
 
 AGENTE = "developer-agent"
 
-RAIZ_TRABAJO_POR_DEFECTO = Path(
-    "/Users/franbincovich/Desktop/VSCode/software-factory-state/trabajo"
-)
+RAIZ_TRABAJO_POR_DEFECTO = DIR_ESTADO / "trabajo"
 
 
 class CicloDeDependencias(RuntimeError):

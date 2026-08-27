@@ -55,10 +55,9 @@ import presupuesto
 import verificador
 from agent_loader import cargar
 from intake import ingresar, texto_rastreable, validar
+from operational_state import DIR_ESTADO
 
-RUTA_CHECKPOINTER_POR_DEFECTO = Path(
-    "/Users/franbincovich/Desktop/VSCode/software-factory-state/checkpointer/checkpoints.db"
-)
+RUTA_CHECKPOINTER_POR_DEFECTO = DIR_ESTADO / "checkpointer" / "checkpoints.db"
 
 # Valor que se le pasa a `interrupt()` al reanudar. El nodo no lo usa: la
 # decisión se lee del Operational State, que es donde T11 la dejó. Existe

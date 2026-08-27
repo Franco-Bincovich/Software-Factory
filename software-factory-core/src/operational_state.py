@@ -13,14 +13,30 @@ evidencia de la fábrica sin reconstrucción posible. Es R8 y está asumido.
 """
 
 import json
+import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-RUTA_POR_DEFECTO = Path(
-    "/Users/franbincovich/Desktop/VSCode/software-factory-state/factory.db"
+# El anclaje se cuenta desde este archivo, src/operational_state.py: parents[0]
+# es src, parents[1] es software-factory-core, parents[2] es la raiz del repo. La
+# carpeta de estado es hermana del repo, no interna, porque el almacen vive fuera
+# de todo git; si moves este modulo, el conteo deja de valer y hay que corregirlo
+# o definir SOFTWARE_FACTORY_STATE_DIR.
+RAIZ_REPO = Path(__file__).resolve().parents[2]
+
+# Una sola variable gobierna todo el estado, y de ella derivan las tres rutas:
+# factory.db, trabajo/ y checkpointer/checkpoints.db. ADR-006: el Estado
+# Operativo es la unica fuente de verdad. Tres variables independientes
+# permitirian partirlo en tres discos distintos sin aviso, y la configuracion no
+# debe poder expresar un estado invalido.
+DIR_ESTADO = Path(
+    os.environ.get("SOFTWARE_FACTORY_STATE_DIR")
+    or RAIZ_REPO.parent / "software-factory-state"
 )
+
+RUTA_POR_DEFECTO = DIR_ESTADO / "factory.db"
 
 # ADR-009 punto 8: toda accion registrada nombra a su actor.
 ACTORES_V01 = ("requirement-agent", "plataforma", "CEO")

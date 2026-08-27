@@ -11,10 +11,9 @@ sys.path.insert(0, str(RAIZ / "src"))
 from agent_loader import CargaFallida, cargar  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
 
-DEFINICION_REAL = Path(
-    "/Users/franbincovich/Desktop/VSCode/Software Factory/"
-    "03 - Agent Framework/Requirement Agent.md"
-)
+# RAIZ es software-factory-core, asi que el Vault cuelga de RAIZ.parent: vive en
+# la raiz del repo, al lado del paquete y no adentro.
+DEFINICION_REAL = RAIZ.parent / "03 - Agent Framework" / "Requirement Agent.md"
 
 FRONTMATTER = """---
 titulo: Agente de prueba
