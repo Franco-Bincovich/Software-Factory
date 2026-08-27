@@ -16,12 +16,18 @@ Piezas de runtime de V0.1. Ocho tareas del Bloque B de PLAN-V0.1:
 T14 las encadena: es lo que hace que exista una corrida. T15 es lo que hace que
 esa corrida produzca algo — y lo que hace que cueste plata.
 
+Más una pieza sin número de tarea, que es de V0.2 y no del Bloque B:
+
+| Pieza | Módulos |
+|---|---|
+| Verificador de Entregas del Developer | `src/verificador_entrega.py` · `src/inspeccion_js.py` |
+
 ```
-schema/     esquema JSON del Plan de Trabajo
-src/        las ocho piezas
+schema/     los esquemas JSON del Plan de Trabajo y de la Entrega
+src/        las piezas
 templates/  la plantilla de pedido
 examples/   un pedido de ejemplo, válido y listo para correr
-fixtures/   el pedido base y los seis planes de prueba
+fixtures/   el pedido base, los seis planes de prueba y la entrega limpia
 tests/      un archivo por pieza
 docs/       las especificaciones
 correr.py   la CLI de una corrida
@@ -38,8 +44,15 @@ La especificación completa está en [`docs/T7-spec.md`](docs/T7-spec.md).
 
 ## Requisitos
 
-Python 3.12 y cinco dependencias directas, declaradas con versión exacta en
-`requirements.txt`: `jsonschema` para el esquema del Plan de Trabajo;
+**Python 3.12 y Node.** Python corre la fábrica; Node solo se usa para
+comprobar que los archivos de una Entrega parseen, con `node --check`, que
+parsea y termina sin ejecutar nada. **Sin Node el verificador de entregas no
+verifica entregas**: falla nombrando qué falta, en vez de aprobar lo que no pudo
+revisar. Todo lo demás —las ocho piezas de V0.1, incluida la verificación de
+planes— corre sin Node.
+
+Cinco dependencias directas de Python, declaradas con versión exacta en
+`requirements.txt`: `jsonschema` para los esquemas del Plan de Trabajo y de la Entrega;
 `langgraph` más `langgraph-checkpoint-sqlite` para el armazón de ejecución de
 T14 —LangGraph es el coordinador que fija ADR-006, y la versión se fija exacta
 por su punto 7—; y `anthropic` más `python-dotenv` para el productor real de
@@ -87,6 +100,52 @@ válido y en 1 si no lo es.
 Evalúa las siete reglas siempre y devuelve la lista completa; no corta en el
 primer incumplimiento. Si el plan no valida contra el esquema devuelve regla `0`
 y no evalúa el resto.
+
+## Verificador de Entregas del Developer
+
+El par del anterior para código. Recibe una Entrega del Developer y el Plan de
+Trabajo que la originó, y devuelve la misma forma de veredicto. **No ejecuta
+nada de lo que verifica**: el único proceso externo que lanza es `node --check`,
+que parsea el archivo y termina sin correr una sola línea.
+
+La especificación completa está en
+[`docs/verificador-entrega-spec.md`](docs/verificador-entrega-spec.md).
+
+```
+./.venv/bin/python src/verificador_entrega.py fixtures/entrega-ok.json \
+    --plan fixtures/plan-entrega.json
+```
+
+Son dos módulos: `verificador_entrega.py` sabe qué es una Entrega —el esquema,
+las reglas del contrato, la orquestación y la CLI— e `inspeccion_js.py` sabe de
+texto de código y no sabe qué es una Entrega.
+
+**Los identificadores de regla llevan prefijo** porque salen de tres documentos
+distintos: `C` el Contrato de Entrega del Developer, `R` el Ruleset mecánico con
+su propio número, `P` las prohibiciones del contrato, y `V` lo que este
+verificador comprueba y no tiene número en ningún lado. Un incumplimiento que no
+se puede rastrear al documento que lo exige no se puede discutir.
+
+```json
+{
+  "valido": false,
+  "incumplimientos": [
+    {
+      "regla": "C7",
+      "archivo": "demo.html",
+      "detalle": "Reimplementa la lógica: declara validarLegajo, que ya está en 'src/validar-legajo.js'."
+    }
+  ]
+}
+```
+
+**Varias reglas son parciales y están declaradas como tales**, una por una, con
+lo que cada una no puede ver. La más parcial es `V4` —que `pruebas.html` no sea
+teatro—: ve un veredicto escrito a mano, no ve un script que invoca la función,
+ignora lo que devuelve y escribe "PASA" igual. Eso queda para el Gate humano.
+
+**Sin `node` en el PATH falla nombrando qué falta**, en vez de aprobar lo que no
+pudo parsear.
 
 ## Formulario de Intake (T8)
 
@@ -343,8 +402,9 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Ciento cuatro tests, uno por cada fila de los criterios de aceptación de las ocho
-tareas, más los que cubren lo que se fue arreglando después:
+Ciento treinta y tres tests, uno por cada fila de los criterios de aceptación de
+las ocho tareas, más los que cubren lo que se fue arreglando después y los del
+verificador de entregas:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -357,6 +417,7 @@ tareas, más los que cubren lo que se fue arreglando después:
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
 | `test_correr.py` | 10 | el modo de producción a través de la reanudación |
+| `test_verificador_entrega.py` | 29 | un defecto sembrado por regla sobre la entrega limpia |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
