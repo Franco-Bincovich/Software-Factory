@@ -169,6 +169,19 @@ Cada unidad del plan abre su propia corrida de Developer, con techos y
 presupuesto propios, y declara de qué corrida de Requirement viene. Por eso se
 puede reintentar al Developer sin volver a producir el plan.
 
+**Declarar si hay cadena es obligatorio.** Una corrida nueva exige
+`--definicion-developer` para ejecutar las unidades del plan, o `--solo-plan`
+para producir el plan y cerrar sin ejecutarlas. No hay valor por defecto: correr
+media cadena tiene que ser un acto, no un olvido. La decisión queda registrada
+como `cadena_fijada` — con la ruta, o con `null` y el motivo—, haya cadena o no.
+
+**El cierre comprueba el régimen que la corrida declaró.** `gates_de_la_cadena`
+dice bajo qué régimen corre —dos Gates con cadena, uno sin ella— y `fin` no
+escribe `run_cerrada` sin verificar que se cumplió. Una corrida que declara dos
+Gates y cierra habiendo aprobado uno levanta `RegimenIncumplido` en vez de cerrar
+en verde. El registro es lo único que la fábrica tiene: una corrida cuyo registro
+se contradice es peor que una que falla, porque la que falla se ve.
+
 **Dos Gates en toda la cadena**, los dos en la corrida del pedido: entrada sobre
 el pedido, salida sobre la entrega. **El Gate de salida sobre el plan se
 suprimió** —aprobar el plan y después aprobar la entrega que sale de él es
@@ -186,8 +199,9 @@ repositorio y del Vault, con un subdirectorio por unidad —si no, dos unidades 
 pisarían `pruebas.html`—. Se borra **recién después** de aprobar el Gate de
 salida; `--conservar-trabajo` no lo borra.
 
-**Sin `--definicion-developer` la corrida cierra con el plan verificado**, que es
-el Requirement Agent corriendo solo.
+**Con `--solo-plan` la corrida cierra con el plan verificado**, que es el
+Requirement Agent corriendo solo. Esa corrida declara un solo Gate, porque sin
+Developer no hay entrega que aprobar.
 
 **Un solo modo para toda la cadena.** `--stub` usa los dos productores de
 relleno; el modo modelo usa los dos reales. Una corrida no produce el plan contra
@@ -476,9 +490,9 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Ciento setenta y seis tests, uno por cada fila de los criterios de aceptación de
-las ocho tareas, más los que cubren lo que se fue arreglando después y las piezas
-de V0.2:
+Ciento noventa y cuatro tests, uno por cada fila de los criterios de aceptación
+de las ocho tareas, más los que cubren lo que se fue arreglando después y las
+piezas de V0.2:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -494,6 +508,7 @@ de V0.2:
 | `test_verificador_entrega.py` | 29 | un defecto sembrado por regla sobre la entrega limpia |
 | `test_cadena.py` | 18 | la cadena completa, el reintento, la detención y el techo de la cadena |
 | `test_productor_entrega.py` | 25 | el productor de entregas, con cliente falso |
+| `test_correr_cadena.py` | 18 | la costura entre la CLI y la cadena, y el régimen declarado |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.

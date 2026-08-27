@@ -41,6 +41,43 @@ versión del código:
 gates_de_la_cadena  {gates: ["entrada","salida"], suprimido: "salida_de_plan", motivo: "..."}
 ```
 
+**El régimen no es una constante: depende de la corrida.** Una corrida sin
+Developer declara `gates: ["entrada"]`, porque sin entrega no hay nada que
+aprobar en el de salida. Declarar dos y abrir uno hace que el registro se
+contradiga a sí mismo.
+
+### El cierre comprueba el régimen que la corrida declaró
+
+`fin` no escribe `run_cerrada` sin antes verificar que la corrida cumplió lo que
+prometió. Si el régimen declara dos Gates y la corrida cierra habiendo aprobado
+uno —o abre uno que no declaró—, **levanta `RegimenIncumplido` en vez de cerrar
+en verde**, deja el hecho escrito y no borra el directorio de trabajo.
+
+Se aplica solo a los cierres que afirman haber completado el trabajo:
+`entregado` y `plan_verificado`. Un rechazo humano o un escalamiento cierran
+legítimamente sin haber abierto todos los Gates, porque no prometieron lo
+contrario.
+
+Esta comprobación no existe por un defecto puntual. Existe porque **el registro
+es lo único que la fábrica tiene**, y una corrida cuyo registro se contradice es
+peor que una que falla: la que falla se ve.
+
+### Tener cadena o no es un hecho, no un default
+
+Una corrida nueva **exige** declararlo: `--definicion-developer` para ejecutar
+las unidades, o `--solo-plan` para producir el plan y cerrar sin ejecutarlas. No
+hay valor por defecto, y pedir los dos es error de uso.
+
+```
+cadena_fijada  {developer: "…/Developer Agent.md"}
+cadena_fijada  {developer: null, motivo: "se pidió --solo-plan: …"}
+```
+
+Se escribe **siempre**, haya cadena o no. Sin eso, leyendo los eventos de una
+corrida sin unidades no se distingue "nadie pidió cadena" de "se pidió y no se
+armó". Es el mismo criterio que `modo_produccion_fijado`: una decisión que
+cambia lo que la fábrica hace no se resuelve por la ausencia de un flag.
+
 El ciclo queda en dos paradas:
 
 ```
@@ -166,7 +203,9 @@ Ninguno exigió tocar el esquema de la base ni los triggers de inmutabilidad.
 
 | Evento | Corrida | Qué registra |
 |---|---|---|
-| `gates_de_la_cadena` | pedido | Bajo qué régimen de Gates corrió |
+| `gates_de_la_cadena` | pedido | Bajo qué régimen de Gates corrió, según tenga cadena o no |
+| `cadena_fijada` | pedido | Si la corrida tiene Developer, o el motivo de que no |
+| `regimen_incumplido` | pedido | La corrida cerró sin cumplir lo que declaró. Nunca debería aparecer |
 | `directorio_trabajo` · `directorio_borrado` | pedido | Dónde se trabajó y cuándo se descartó |
 | `unidad_lanzada` · `unidad_entregada` · `unidad_fallida` | pedido | Qué unidad, en qué corrida |
 | `plan_detenido` | pedido | Qué falló y qué quedó sin ejecutar |
@@ -201,8 +240,9 @@ Developer, y tiene tres diferencias con aquel, las tres medidas:
   puede.
 
 Con qué definición de Developer corre la cadena es un hecho de la corrida
-—`developer_fijado`—, con el mismo criterio que el modo de producción: reanudar
-con otra definición cambiaría en silencio quién ejecutó las unidades.
+—`cadena_fijada`—, con el mismo criterio que el modo de producción: reanudar con
+otra definición, o pedir cadena en una corrida abierta con `--solo-plan`,
+cambiaría en silencio quién ejecutó las unidades.
 
 ---
 
@@ -222,6 +262,12 @@ checkpointer y un directorio de trabajo temporales.
 | Techo de la cadena | Corta antes de lanzar la unidad que lo pasaría |
 | Directorio | Un subdirectorio por unidad; se borra recién tras el Gate aprobado; no se borra si escaló; una ruta que escapa no se escribe |
 | Idempotencia | Reentrar no relanza ni repaga lo entregado, y reusa el directorio |
+
+`tests/test_correr_cadena.py` cubre la costura entre la CLI y la cadena, que es
+donde estaba el hueco: que una corrida nueva sin declarar cadena no arranque y no
+deje rastro, que con `--definicion-developer` ejecute las unidades de verdad, que
+`--solo-plan` declare un solo Gate y lo registre con su motivo, y que declarar
+dos Gates y cerrar con uno levante en vez de cerrar en verde.
 
 ## Fuera de alcance
 
