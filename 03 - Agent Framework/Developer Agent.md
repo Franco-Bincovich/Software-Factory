@@ -161,8 +161,20 @@ detiene mientras un Gate está pendiente de resolución humana.
 
 **Los tres son por unidad, no por plan.** Un Agent Run del Developer resuelve una
 unidad, así que un plan de diez unidades admite hasta USD 5 y cien minutos de
-Developer, además de lo que costó producirlo. El techo del plan completo no es
-materia de esta definición y hoy no existe: es una de las decisiones abiertas.
+Developer, además de lo que costó producirlo.
+
+### El techo de la cadena
+
+Por encima de los tres hay un cuarto techo, que no es de esta definición sino de
+la cadena entera: **el techo de costo del pedido acota la suma de todas las
+corridas —Requirement y todos los Developer—, y se comprueba antes de lanzar cada
+unidad.** Los techos de acá siguen siendo por unidad; el de la cadena es el que
+hace que sacar el Gate de salida del plan tenga defensa.
+
+Sin él, un plan de diez unidades gastaría diez veces el techo de esta definición
+sin que nadie lo haya decidido, y entre el Gate de entrada y el de salida no hay
+ninguna persona mirando. Es la contrapartida de lo que el [[Requirement Agent]]
+suprime en su versión 1.1, y las dos cosas se decidieron juntas.
 
 Alcanzar cualquiera de los tres corta la corrida y escala. Elevar un techo
 dispara Gate por el criterio 4 del piso de ADR-004.
@@ -355,17 +367,14 @@ revisión que el Contrato de Entrega difiere para el lenguaje.
 1. **Los valores de los tres techos son estimaciones sin datos.** Se calibran
    después de las primeras corridas medidas. No requieren ADR: son parámetros de
    esta Agent Definition.
-2. **No existe techo del plan completo.** Los techos de acá son por unidad, y
-   nada acota hoy lo que cuesta ejecutar un plan entero. Es materia de ADR-010 y
-   se decide antes de la primera corrida de V0.2 con más de dos unidades.
-3. **Un solo Developer genérico.** Hace lógica y frontend. La división en backend
+2. **Un solo Developer genérico.** Hace lógica y frontend. La división en backend
    y frontend espera a que haya trabajo real que la justifique: por lo que fija
    el Agent Framework, un agente nuevo se justifica por reglas, herramientas y
    verificación distintas, y hoy las tres son las mismas.
-4. **El directorio de trabajo es una cuarta superficie de escritura** que ADR-001
+3. **El directorio de trabajo es una cuarta superficie de escritura** que ADR-001
    no nombra. Si sobrevive a V0.2, corresponde incorporarlo al glosario en vez de
    dejarlo declarado agente por agente.
-5. **Alcance de lectura del Vault.** Hoy limitado a cuatro documentos. Ampliarlo
+4. **Alcance de lectura del Vault.** Hoy limitado a cuatro documentos. Ampliarlo
    dispara Gate por el criterio 5 del piso de ADR-004.
 
 ---

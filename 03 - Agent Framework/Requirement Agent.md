@@ -3,9 +3,9 @@ titulo: Requirement Agent
 tipo: agent-definition
 estado: aceptado
 aprobado: 2026-08-06
-version: 1.0
+version: 1.1
 owner: CEO
-actualizado: 2026-08-06
+actualizado: 2026-08-26
 adr: [ADR-001, ADR-003, ADR-004, ADR-005, ADR-009, ADR-010, ADR-011]
 aliases: [Requirement Agent]
 agent_id: requirement-agent
@@ -22,6 +22,12 @@ memory: none
 
 Artefacto de construcción de V0.1, tarea T9. Cumple el contrato de ADR-003: los
 trece campos completos, ninguno vacío, ninguno marcado como pendiente.
+
+**Versión 1.1 — se suprime el Gate de salida.** Al encadenar el Developer Agent
+en V0.2, aprobar el plan y después aprobar la entrega que sale de él es aprobar
+dos veces lo mismo. El cambio está justificado en la sección Gates declarados.
+Las corridas de V0.1 referencian la versión 1.0 y no se reinterpretan: cambiar
+la definición no altera ejecuciones pasadas, según ADR-003.
 
 ---
 
@@ -83,7 +89,10 @@ plataforma, nunca el agente, según el punto 3 de ADR-005.
 orden. Qué depende de qué. Cómo se redacta cada Acceptance Criterion. Qué
 supuestos declara. Qué deja explícitamente fuera del alcance del plan.
 
-**Propone para aprobación.** El Plan de Trabajo completo, en el Gate de salida.
+**Propone para aprobación.** Nada, desde 1.1. El Plan de Trabajo pasa al
+Developer Agent sin aprobación intermedia. La lista vacía no es un campo en
+blanco de los que ADR-003 prohíbe: es la declaración de que este agente no somete
+ningún artefacto a firma, y el porqué está en Gates declarados.
 
 **Tiene prohibido.** Modificar el pedido de entrada. Ampliar o reinterpretar el
 alcance excluido. Elevar cualquiera de sus techos. Escribir en el Vault, sin
@@ -95,11 +104,17 @@ Asignar unidades de trabajo a ningún agente. Estimar esfuerzo o duración.
 ## 7. Criterio de terminación
 
 Existe un Plan de Trabajo que satisface las siete reglas de validez del Contrato
-del Plan de Trabajo y fue aprobado en su Gate de salida.
+del Plan de Trabajo, y ese veredicto quedó registrado en el Operational State.
 
 **Quién lo evalúa.** Las siete reglas las evalúa el verificador estructural de la
-plataforma. La aprobación la otorga el CEO. En ningún caso lo evalúa el propio
-Agent Run, conforme al campo 7 de ADR-003.
+plataforma. En ningún caso lo evalúa el propio Agent Run, conforme al campo 7 de
+ADR-003.
+
+**El criterio ya no incluye una aprobación humana**, y por eso el ancla de
+inmutabilidad del plan se mueve con él: el [[Contrato del Plan de Trabajo]] fija
+que un plan queda inmutable cuando pasa la verificación y el hecho se registra.
+Que la terminación no dependa de una firma no la vuelve autoevaluada: la evalúa
+la plataforma, que es lo que ADR-003 exige.
 
 ## 8. Presupuesto
 
@@ -183,7 +198,7 @@ Queda registrado obligatoriamente en el Operational State, por corrida:
 4. Cada iteración: el plan producido, el resultado de la validación estructural,
    y las reglas incumplidas si las hubo.
 5. Consumo medido contra los tres techos, incluso si la corrida se cortó.
-6. Resolución de ambos Gates: quién aprobó, cuándo, y qué aprobó.
+6. Resolución del Gate de entrada: quién aprobó, cuándo, y qué aprobó.
 7. Todo escalamiento, con la condición que lo disparó.
 
 Los eventos no se editan, según el punto 3 de ADR-011.
@@ -204,19 +219,48 @@ tres, esta Agent Definition no se puede instanciar.
 **Gate de entrada.** Se aprueban el pedido y los tres techos antes de consumir.
 Corresponde al criterio 6 del piso de ADR-004.
 
-**Gate de salida.** Se aprueba el Plan de Trabajo producido. **No corresponde a
-ningún criterio del piso**: es un Gate propio de esta Agent Definition, de los
-que ADR-004 permite agregar. Se declara acá explícitamente para que no se lea
-como heredado.
+**Es el único Gate de esta Agent Definition.** Vencimiento nunca es aprobación.
 
-Vencimiento nunca es aprobación, en ninguno de los dos.
+### El Gate de salida, suprimido en 1.1
+
+Hasta la versión 1.0 este agente declaraba un Gate de salida sobre el Plan de
+Trabajo producido. Desde 1.1 no lo declara.
+
+**Por qué se puede sacar.** No era un Gate del piso y el propio documento lo
+decía: aprobar un plan no es irreversible, no cruza el perímetro y no modifica
+una norma. Ninguno de los seis criterios de ADR-004 lo exigía. Era un Gate propio
+de esta Agent Definition, y lo saca la misma autoridad que lo puso. **Esta
+supresión no necesita ADR**, y no lo dice este documento por conveniencia: lo
+dice ADR-004 al enumerar un piso que no lo incluye, y [[Autonomy and HITL]] al
+usarlo como el ejemplo de Gate propio precisamente para que nadie lo leyera como
+heredado.
+
+**Por qué se saca.** En V0.2 el plan lo consume el Developer Agent y de él sale
+una entrega, que tiene su propio Gate de salida. Aprobar el plan y después
+aprobar la entrega que sale de él es aprobar dos veces lo mismo, y el segundo
+Gate es el que mira algo comprobable: una persona leyendo un plan no puede saber
+si el código va a funcionar; abriendo los dos HTML de la entrega, lo ve. El
+[[Roadmap]] ya definía V0.2 como Gates solo en los extremos.
+
+**Qué se pierde, dicho sin adorno.** El plan deja de tener lectura humana antes
+de que se construya sobre él. Un plan malo ya no se detecta con una firma: se
+paga con presupuesto. **La defensa pasa a ser el techo de la cadena**, que acota
+lo que la corrida entera puede gastar entre los dos Gates. Sin ese techo esta
+supresión quedaría sin defensa, y por eso las dos cosas van juntas y no una sin
+la otra.
+
+**Qué queda registrado.** Cada corrida declara bajo qué régimen de Gates corrió,
+como hecho suyo en el Operational State, junto al régimen que suprimió y por qué.
+Que el cambio esté en la versión de esta definición no alcanza: la corrida tiene
+que poder explicarse sola.
 
 ## Consumidor de la salida
 
 **Temporal: humano.** En V0.1 el Plan de Trabajo lo consume el CEO ejecutándolo
-manualmente. A partir de V0.2 lo consume el Developer Agent sin intervención
-intermedia. El formato de salida está diseñado para el segundo caso, no para el
-primero, y eso explica su rigidez.
+manualmente. A partir de V0.2 lo consume el [[Developer Agent]] **sin
+intervención intermedia**, y desde 1.1 eso es literal: entre la verificación del
+plan y la primera unidad ejecutada no hay Gate. El formato de salida está
+diseñado para el segundo caso, no para el primero, y eso explica su rigidez.
 
 ## Decisiones abiertas
 

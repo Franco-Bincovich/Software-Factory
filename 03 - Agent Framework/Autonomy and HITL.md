@@ -123,6 +123,14 @@ un plan no es irreversible, no cruza el perímetro, no modifica una norma—. Es
 Gate propio. Leerlo como heredado haría creer que el piso cubre más de lo que
 cubre.
 
+**Nota, para quien lo busque y no lo encuentre.** Ese Gate estuvo vigente hasta
+V0.2 y ya no existe: la versión 1.1 del [[Requirement Agent]] lo suprime, porque
+al encadenarse el [[Developer Agent]] aprobar el plan y después aprobar la
+entrega que sale de él es aprobar dos veces lo mismo. **La doctrina de esta
+sección no cambia**, y el ejemplo sigue sirviendo justamente por eso: un Gate
+propio lo agrega y lo saca la Agent Definition que lo declaró, sin tocar el piso.
+Uno del piso no se podría haber sacado así.
+
 ---
 
 ## Escalamiento

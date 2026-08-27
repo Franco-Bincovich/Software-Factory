@@ -3,9 +3,9 @@ titulo: Contrato del Plan de Trabajo
 tipo: contrato
 estado: aceptado
 aprobado: 2026-08-06
-version: 1.0
+version: 1.1
 owner: CEO
-actualizado: 2026-08-06
+actualizado: 2026-08-26
 adr: [ADR-003, ADR-004, ADR-005, ADR-010, ADR-011]
 aliases: [Contrato del Plan de Trabajo, Plan de Trabajo]
 ---
@@ -40,12 +40,40 @@ Lo que vive en el Vault es este contrato. Los planes que se produzcan, no.
 
 ## El plan es inmutable
 
-Una vez aprobado en su Gate de salida, un Plan de Trabajo no se edita. Si el
-trabajo cambia, se produce un plan nuevo que declara a cuál sucede. Coherente con
-el punto 3 de ADR-011: los hechos no se editan, se suceden.
+**Un Plan de Trabajo queda inmutable cuando pasa la verificación estructural y
+ese veredicto queda registrado en el Operational State.** Desde ese evento no se
+edita. Si el trabajo cambia, se produce un plan nuevo que declara a cuál sucede.
+Coherente con el punto 3 de ADR-011: los hechos no se editan, se suceden.
 
-Sin esta regla el handoff no significa nada: el Developer Agent no puede
+Sin esta regla el traspaso no significa nada: el Developer Agent no puede
 consumir un artefacto que puede cambiar mientras lo consume.
+
+### Por qué el ancla es la verificación y no una firma
+
+Hasta la versión 1.0 de este contrato el plan quedaba inmutable **al aprobarse en
+el Gate de salida del Requirement Agent**. Ese Gate se suprime en V0.2 —aprobar
+el plan y después aprobar la entrega que sale de él es aprobar dos veces lo
+mismo—, así que el ancla se mueve al hecho observable que ya estaba debajo: el
+veredicto de la verificación estructural, registrado con su corrida y su
+iteración.
+
+**Lo que se conserva es la propiedad, no el procedimiento.** Lo que la
+inmutabilidad tiene que garantizar es una sola cosa: que exista un momento
+identificable a partir del cual el plan no se toca, para que quien lo consume no
+esté trabajando sobre algo que cambia. Una firma da ese momento. Un veredicto
+registrado también, y además es comprobable por máquina y no depende de que
+alguien esté disponible.
+
+**Un plan que todavía no pasó la verificación no es inmutable: es un borrador.**
+Se corrige, y de hecho el ciclo de reintento lo corrige. Que cada iteración
+modifique el plan de la anterior no viola esta regla, porque la inmutabilidad
+empieza en el veredicto válido y no antes. Esto no era explícito en 1.0 y
+conviene que lo sea: la regla nunca prohibió iterar, prohibía editar lo ya
+cerrado.
+
+**El momento se corrió hacia atrás, no hacia adelante.** El plan queda cerrado
+antes que en 1.0 —cuando pasa T7, no cuando alguien firma—, así que el período
+durante el cual podía cambiar se acorta. La regla se endurece, no se afloja.
 
 ---
 
@@ -119,7 +147,8 @@ decisión del agente y por lo tanto se justifica.
 ## Reglas de validez
 
 Las cinco reglas estructurales de ADR-005, aplicadas a este artefacto. Un plan
-que viole cualquiera se rechaza sin llegar al Gate de salida.
+que viole cualquiera se rechaza y vuelve al ciclo de corrección; no queda
+cerrado, y por lo tanto tampoco queda inmutable.
 
 1. Toda unidad de trabajo tiene al menos un Acceptance Criterion.
 2. Todo Acceptance Criterion tiene las tres partes.
@@ -169,7 +198,8 @@ contrato fija que debe existir una forma estructurada, no cuál.
 
 1. Los planes producidos viven en el Operational State; solo este contrato vive
    en el Vault.
-2. Un plan aprobado es inmutable; se sucede, no se edita.
+2. Un plan verificado es inmutable; se sucede, no se edita. Desde 1.1 el ancla
+   es el veredicto registrado, no una firma.
 3. Una unidad de trabajo es una sola acción verificable.
 4. Un Acceptance Criterion sin las tres partes no es válido.
 5. Las dependencias son internas al plan; lo externo es supuesto.

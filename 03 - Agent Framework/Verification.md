@@ -3,9 +3,9 @@ titulo: Verification
 tipo: norma
 estado: aceptado
 aprobado: 2026-08-07
-version: 1.0
+version: 1.1
 owner: CEO
-actualizado: 2026-08-07
+actualizado: 2026-08-26
 adr: [ADR-003, ADR-004, ADR-005, ADR-011]
 aliases: [Verification, Verificación]
 ---
@@ -94,8 +94,28 @@ silencio.
 Nada de eso lo detecta comparar un artefacto contra su propia especificación.
 
 **El único control sustantivo durante ese período es la aprobación humana en el
-Gate de salida.** Por eso ese Gate no puede tratarse como formalidad, y por eso
-el Runbook indica explícitamente qué mirar al resolverlo.
+Gate de salida de la cadena, que se resuelve sobre la entrega.** Por eso ese Gate
+no puede tratarse como formalidad, y por eso el Runbook indica explícitamente qué
+mirar al resolverlo.
+
+### El control se movió hacia adelante
+
+Desde V0.2 ese es el único Gate después del de entrada: **el Gate de salida sobre
+el plan se suprime**, porque aprobar el plan y después aprobar la entrega que
+sale de él es aprobar dos veces lo mismo. El control sustantivo no se debilita al
+moverse, mejora de objeto: una persona leyendo un plan no puede saber si el
+código va a funcionar; abriendo `pruebas.html` y `demo.html` lo ve funcionar o lo
+ve fallar. Contra el modo de falla de REV-001 —correr sin errores y estar roto en
+silencio— un plan bien escrito no ofrece ninguna defensa y una demo operable
+ofrece alguna.
+
+**Lo que se pierde hay que decirlo.** El plan deja de tener lectura humana antes
+de que se construya sobre él. Un plan malo ya no se detecta con una firma: se
+paga con presupuesto, porque el Developer ejecuta sus unidades sobre un plan que
+nadie leyó. La defensa contra eso es **el techo de la cadena**, que acota lo que
+la corrida entera puede gastar entre los dos Gates. Sin ese techo la supresión
+quedaría sin defensa: las dos cosas se decidieron juntas y no vale una sin la
+otra.
 
 ---
 
@@ -141,6 +161,8 @@ explícitamente.
 3. Las comprobaciones parciales se declaran parciales.
 4. El rechazo devuelve la lista completa, no el primer incumplimiento.
 5. Cobertura de tests no es evidencia de corrección.
+6. Desde 1.1, el control sustantivo humano se ejerce sobre la entrega y no sobre
+   el plan, y su contrapeso es el techo de la cadena.
 
 ## Decisiones abiertas
 
