@@ -1,0 +1,29 @@
+{
+  "unidad": "U1",
+  "archivos": [
+    {
+      "ruta": "src/validar-legajo.js",
+      "rol": "artefacto_esperado",
+      "contenido": "// Un legajo valido es exactamente cuatro digitos.\nfunction validarLegajo(valor) {\n  if (typeof valor !== \"string\" || valor.trim() === \"\") {\n    return { valido: false, motivo: \"vacio\" };\n  }\n  const limpio = valor.trim();\n  if (!/^[0-9]+$/.test(limpio)) {\n    return { valido: false, motivo: \"no_numerico\" };\n  }\n  if (limpio.length !== 4) {\n    return { valido: false, motivo: \"longitud\" };\n  }\n  return { valido: true, motivo: null };\n}\n\nif (typeof module !== \"undefined\") {\n  module.exports = { validarLegajo };\n}\n"
+    },
+    {
+      "ruta": "tests/validar-legajo.test.js",
+      "rol": "artefacto_esperado",
+      "contenido": "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { validarLegajo } = require(\"../src/validar-legajo.js\");\n\ntest(\"cuatro digitos es valido\", () => {\n  assert.deepStrictEqual(validarLegajo(\"4471\"), { valido: true, motivo: null });\n});\n\ntest(\"vacio se rechaza por vacio\", () => {\n  assert.deepStrictEqual(validarLegajo(\"\"), { valido: false, motivo: \"vacio\" });\n});\n\ntest(\"con letras se rechaza por no_numerico\", () => {\n  assert.deepStrictEqual(validarLegajo(\"44a1\"), { valido: false, motivo: \"no_numerico\" });\n});\n\ntest(\"tres digitos se rechaza por longitud\", () => {\n  assert.deepStrictEqual(validarLegajo(\"447\"), { valido: false, motivo: \"longitud\" });\n});\n"
+    },
+    {
+      "ruta": "pruebas.html",
+      "rol": "artefacto_esperado",
+      "contenido": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Pruebas &mdash; validarLegajo (U1)</title>\n<script src=\"./src/validar-legajo.js\"></script>\n\n<h1>validarLegajo &mdash; Acceptance Criteria de U1</h1>\n<p id=\"resumen\"></p>\n<table id=\"tabla\" border=\"1\" cellpadding=\"6\">\n  <tr><th>Entrada</th><th>Esperado</th><th>Obtenido</th><th>Veredicto</th></tr>\n</table>\n\n<script>\n  // Los casos son los Acceptance Criteria de la unidad, tal como los declara\n  // el plan. Nada mas entra aca.\n  const casos = [\n    { entrada: \"4471\", esperado: { valido: true,  motivo: null } },\n    { entrada: \"\",     esperado: { valido: false, motivo: \"vacio\" } },\n    { entrada: \"44a1\", esperado: { valido: false, motivo: \"no_numerico\" } },\n    { entrada: \"447\",  esperado: { valido: false, motivo: \"longitud\" } },\n  ];\n\n  let pasan = 0;\n  const tabla = document.getElementById(\"tabla\");\n\n  for (const caso of casos) {\n    const obtenido = validarLegajo(caso.entrada);\n    const paso = JSON.stringify(obtenido) === JSON.stringify(caso.esperado);\n    if (paso) pasan++;\n\n    const fila = tabla.insertRow();\n    fila.style.background = paso ? \"#d8f5d8\" : \"#f5d8d8\";\n    fila.insertCell().textContent = JSON.stringify(caso.entrada);\n    fila.insertCell().textContent = JSON.stringify(caso.esperado);\n    fila.insertCell().textContent = JSON.stringify(obtenido);\n    fila.insertCell().textContent = paso ? \"PASA\" : \"FALLA\";\n  }\n\n  document.getElementById(\"resumen\").textContent =\n    pasan + \" de \" + casos.length + \" criterios pasan.\";\n</script>\n"
+    },
+    {
+      "ruta": "demo.html",
+      "rol": "artefacto_esperado",
+      "contenido": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Demo &mdash; validarLegajo (U1)</title>\n<script src=\"./src/validar-legajo.js\"></script>\n\n<h1>Validar un legajo</h1>\n<input id=\"entrada\" placeholder=\"4471\">\n<button id=\"validar\">Validar</button>\n<p id=\"resultado\"></p>\n\n<script>\n  document.getElementById(\"validar\").addEventListener(\"click\", () => {\n    const r = validarLegajo(document.getElementById(\"entrada\").value);\n    document.getElementById(\"resultado\").textContent =\n      r.valido ? \"Valido\" : \"Invalido - \" + r.motivo;\n  });\n</script>\n"
+    }
+  ],
+  "supuestos": [
+    "El plan no dice que hacer con espacios alrededor del valor. Se descartan antes de validar.",
+    "El plan no fija los nombres de los motivos. Se usan vacio, no_numerico y longitud."
+  ]
+}

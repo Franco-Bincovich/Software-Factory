@@ -1,0 +1,39 @@
+{
+  "plan_id": "PLAN-ENTREGA-1",
+  "run_id": "run-entrega-1",
+  "pedido_id": "pedido-entrega-1",
+  "sucede_a": null,
+  "restricciones": {
+    "techo_costo": 0.5,
+    "techo_tiempo_min": 10,
+    "techo_iteraciones": 3,
+    "alcance_excluido": [
+      "base de datos"
+    ]
+  },
+  "unidades": [
+    {
+      "id": "U1",
+      "enunciado": "Validar que un legajo tenga exactamente cuatro digitos",
+      "criterios": [
+        {
+          "condicion_observable": "Dado el valor \"4471\", `validarLegajo` devuelve valido",
+          "resultado_esperado": "`valido` es true y `motivo` es null",
+          "procedimiento": "Se abre pruebas.html y se cuenta la fila en verde"
+        },
+        {
+          "condicion_observable": "Dado el valor \"44a1\", `validarLegajo` lo rechaza",
+          "resultado_esperado": "`motivo` vale `no_numerico`",
+          "procedimiento": "Se abre pruebas.html y se lee la columna Obtenido"
+        }
+      ],
+      "dependencias": [],
+      "rastreo": "validar el legajo",
+      "artefacto_esperado": "src/validar-legajo.js con sus pruebas, pruebas.html y demo.html"
+    }
+  ],
+  "supuestos": [],
+  "fuera_de_alcance": [
+    "Persistencia de los legajos validados"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory/schema/entrega.schema.json",
+  "title": "Entrega del Developer",
+  "description": "Forma canonica de una Entrega segun el Contrato de Entrega del Developer. El esquema valida forma y tipos. La regla C9 del contrato -la entrega no trae mas campos que los tres declarados- se cumple aca con additionalProperties: false, y por lo tanto un campo de mas se reporta como C0.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["unidad", "archivos", "supuestos"],
+  "properties": {
+    "unidad": { "type": "string" },
+    "archivos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ruta", "rol", "contenido"],
+        "properties": {
+          "ruta": { "type": "string" },
+          "rol": { "type": "string", "enum": ["artefacto_esperado", "auxiliar"] },
+          "contenido": { "type": "string" },
+          "motivo": { "type": "string" }
+        }
+      }
+    },
+    "supuestos": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
