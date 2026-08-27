@@ -251,7 +251,7 @@ ADR-001.
 
 El Ruleset mecánico está escrito para el Patrón A —capas, `config/settings.py`,
 migraciones, un proyecto entero—. Una entrega de V0.2 son cuatro archivos
-JavaScript sueltos. De sus once reglas, **cuatro muerden y siete quedan inertes**:
+JavaScript sueltos. De sus once reglas, **tres muerden y ocho quedan inertes**:
 
 | Regla | En una entrega de V0.2 |
 |---|---|
@@ -264,15 +264,23 @@ JavaScript sueltos. De sus once reglas, **cuatro muerden y siete quedan inertes*
 | R7 — Logging | Inerte, salvo la prohibición de loguear secretos, que R3 ya cubre |
 | R8 — Tests | **Aplica.** Es la regla que sostiene el segundo entregable |
 | R9 — Commits | Inerte: el agente no commitea en V0.2 |
-| R10 — Diff limpio | **Aplica**, traducida: sin archivos fuera de la unidad ni restos de depuración. Es la regla de validez 5 del Contrato de Entrega |
+| R10 — Diff limpio | Inerte: sin diff, lo que quedaría ya lo cubren otras. Ver abajo |
 | R11 — Formateadores | Inerte: no hay código existente que reformatear |
+
+**R10 se declara inerte y conviene decir por qué**, porque es la que más parece
+que debería aplicar. "Diff limpio" sin diff se traduce a dos cosas, y las dos ya
+tienen dueño: los archivos que nadie pidió son la regla de validez 5 del Contrato
+de Entrega, y los restos de depuración y los secretos son R3. Declararla
+aplicable dejaría un identificador que existe solo para que este documento no
+quede desmentido, y eso es documentación que miente sobre lo que verifica. El
+verificador de entregas no la implementa.
 
 La prohibición de `console.log(` de R3 tiene una consecuencia directa sobre el
 tercer y el cuarto entregable: **el resultado se muestra en pantalla, no por
 consola**. Es lo mismo que ya exige el Contrato de Entrega para `demo.html`, y
 acá se explica por qué.
 
-Que el primer consumidor real del Ruleset use cuatro de once reglas no es un
+Que el primer consumidor real del Ruleset use tres de once reglas no es un
 defecto del Ruleset: es que la entrega de V0.2 es mucho más chica que un
 proyecto. Se declara para que nadie lea "cumple el Ruleset" como más de lo que
 significa acá.
@@ -378,7 +386,7 @@ Cada uno con lo que elegí y de dónde lo saqué.
 | 7 | **Que falta el verificador de entregas** y que sin él esta definición no se instancia | Campo 7 de ADR-003 y punto 3 de ADR-005 |
 | 8 | **Memory: none, con la lectura de entregas aprobadas diferida** | El campo 11 del Requirement, con el mismo argumento |
 | 9 | **Que los techos son por unidad y no por plan**, con la consecuencia de los USD 5 en un plan de diez unidades | Se sigue de "una unidad por corrida" |
-| 10 | **Qué del Ruleset mecánico aplica**: cuatro reglas de once | Lectura del Ruleset contra los cuatro entregables |
+| 10 | **Qué del Ruleset mecánico aplica**: tres reglas de once | Lectura del Ruleset contra los cuatro entregables |
 | 11 | **Las condiciones de aceptación de la entrada** (campo 3) | Los seis campos de una unidad en el Contrato del Plan |
 | 12 | **El consumidor de la salida** y qué le pasa cuando llegue el QA Agent | La sección equivalente del Requirement y el Roadmap V0.3 |
 
