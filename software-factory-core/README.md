@@ -16,11 +16,12 @@ Piezas de runtime de V0.1. Ocho tareas del Bloque B de PLAN-V0.1:
 T14 las encadena: es lo que hace que exista una corrida. T15 es lo que hace que
 esa corrida produzca algo — y lo que hace que cueste plata.
 
-Más una pieza sin número de tarea, que es de V0.2 y no del Bloque B:
+Más las piezas de V0.2, sin número de tarea y fuera del Bloque B:
 
 | Pieza | Módulos |
 |---|---|
 | Verificador de Entregas del Developer | `src/verificador_entrega.py` · `src/inspeccion_js.py` |
+| La cadena: Requirement → Developer | `src/cadena.py` · `src/grafo_developer.py` |
 
 ```
 schema/     los esquemas JSON del Plan de Trabajo y de la Entrega
@@ -146,6 +147,48 @@ ignora lo que devuelve y escribe "PASA" igual. Eso queda para el Gate humano.
 
 **Sin `node` en el PATH falla nombrando qué falta**, en vez de aprobar lo que no
 pudo parsear.
+
+## La cadena de V0.2
+
+Un pedido se convierte en plan y en código **sin ninguna persona en el medio**.
+La especificación completa está en [`docs/cadena-spec.md`](docs/cadena-spec.md).
+
+```
+./.venv/bin/python correr.py --pedido pedido.json \
+    --definicion "…/Requirement Agent.md" \
+    --definicion-developer "…/Developer Agent.md" --stub
+./.venv/bin/python src/gates.py --resolver <run_id> --gate entrada --decision aprobado
+./.venv/bin/python correr.py --reanudar <run_id>      # plan, T7, y todas las unidades
+./.venv/bin/python src/gates.py --resolver <run_id> --gate salida --decision aprobado
+./.venv/bin/python correr.py --reanudar <run_id>      # cierra y borra el directorio
+```
+
+**Dos corridas encadenadas, no una.** El `run_id` del pedido es el de la cadena.
+Cada unidad del plan abre su propia corrida de Developer, con techos y
+presupuesto propios, y declara de qué corrida de Requirement viene. Por eso se
+puede reintentar al Developer sin volver a producir el plan.
+
+**Dos Gates en toda la cadena**, los dos en la corrida del pedido: entrada sobre
+el pedido, salida sobre la entrega. **El Gate de salida sobre el plan se
+suprimió** —aprobar el plan y después aprobar la entrega que sale de él es
+aprobar dos veces lo mismo—, y la defensa contra un plan malo pasa a ser **el
+techo de la cadena**: el techo de costo del pedido acota la suma de todas las
+corridas y se comprueba antes de lanzar cada unidad.
+
+**El Developer nunca decide qué sigue.** El orden sale del grafo de dependencias
+del plan, es determinista, y va de a una unidad por vez. **Si una unidad falla se
+detiene el plan completo**, incluidas las unidades independientes: en V0.2 la
+simplicidad vale más que el aprovechamiento.
+
+**El directorio de trabajo** es descartable, uno por corrida, fuera del
+repositorio y del Vault, con un subdirectorio por unidad —si no, dos unidades se
+pisarían `pruebas.html`—. Se borra **recién después** de aprobar el Gate de
+salida; `--conservar-trabajo` no lo borra.
+
+**Sin `--definicion-developer` la corrida cierra con el plan verificado**, que es
+el Requirement Agent corriendo solo. Y **la cadena exige `--stub`**: todavía no
+existe un productor de entregas contra el modelo, y caer al stub en una corrida
+abierta contra el modelo entregaría relleno con apariencia de código producido.
 
 ## Formulario de Intake (T8)
 
@@ -402,9 +445,9 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Ciento treinta y tres tests, uno por cada fila de los criterios de aceptación de
-las ocho tareas, más los que cubren lo que se fue arreglando después y los del
-verificador de entregas:
+Ciento cincuenta tests, uno por cada fila de los criterios de aceptación de las
+ocho tareas, más los que cubren lo que se fue arreglando después, el verificador
+de entregas y la cadena de V0.2:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -418,6 +461,7 @@ verificador de entregas:
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
 | `test_correr.py` | 10 | el modo de producción a través de la reanudación |
 | `test_verificador_entrega.py` | 29 | un defecto sembrado por regla sobre la entrega limpia |
+| `test_cadena.py` | 17 | la cadena completa, el reintento, la detención y el techo de la cadena |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
