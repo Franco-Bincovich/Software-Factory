@@ -1,3 +1,4 @@
-# Los archivos de skills/externas/ se verifican por hash SHA-256 contra CHECKSUMS.txt.
-# Cualquier conversion de saltos de linea cambia el hash y rompe esa verificacion.
-skills/externas/** -text
+# Todo lo que vive bajo skills/ se preserva byte a byte: el contenido vendoreado,
+# CHECKSUMS.txt que congela sus hashes SHA-256 y MANIFIESTO.md. Cualquier conversion
+# de saltos de linea cambia los hashes o corrompe los nombres de archivo del listado.
+skills/** -text
