@@ -1,0 +1,4 @@
+# Todo lo que vive bajo skills/ se preserva byte a byte: el contenido vendoreado,
+# CHECKSUMS.txt que congela sus hashes SHA-256 y MANIFIESTO.md. Cualquier conversion
+# de saltos de linea cambia los hashes o corrompe los nombres de archivo del listado.
+skills/** -text
