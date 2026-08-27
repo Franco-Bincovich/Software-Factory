@@ -29,6 +29,11 @@ from verificador import cargar_esquema
 # Nota: Sonnet 5 tiene precio introductorio de USD 2 / USD 10 hasta el
 # 2026-08-31. Se declara el precio de lista, que es el que rige después y el
 # que sobreestima —nunca subestima— el consumo real.
+#
+# **Reverificar el 2026-08-31.** Ese día vence el introductorio y hay que
+# comprobar qué precio queda vigente. Si el de lista bajara a 2/10, esta tabla
+# pasaría a sobreestimar un 50% de forma permanente, y un techo medido con
+# precios inflados corta corridas que podían seguir.
 PRECIOS_USD_POR_MTOK = {
     "claude-sonnet-5": {"input": 3.00, "output": 15.00},
     "claude-opus-5": {"input": 5.00, "output": 25.00},

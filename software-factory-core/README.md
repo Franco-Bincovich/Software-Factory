@@ -22,6 +22,7 @@ Más las piezas de V0.2, sin número de tarea y fuera del Bloque B:
 |---|---|
 | Verificador de Entregas del Developer | `src/verificador_entrega.py` · `src/inspeccion_js.py` |
 | La cadena: Requirement → Developer | `src/cadena.py` · `src/grafo_developer.py` |
+| Productor real de Entregas | `src/productor_entrega.py` |
 
 ```
 schema/     los esquemas JSON del Plan de Trabajo y de la Entrega
@@ -186,9 +187,39 @@ pisarían `pruebas.html`—. Se borra **recién después** de aprobar el Gate de
 salida; `--conservar-trabajo` no lo borra.
 
 **Sin `--definicion-developer` la corrida cierra con el plan verificado**, que es
-el Requirement Agent corriendo solo. Y **la cadena exige `--stub`**: todavía no
-existe un productor de entregas contra el modelo, y caer al stub en una corrida
-abierta contra el modelo entregaría relleno con apariencia de código producido.
+el Requirement Agent corriendo solo.
+
+**Un solo modo para toda la cadena.** `--stub` usa los dos productores de
+relleno; el modo modelo usa los dos reales. Una corrida no produce el plan contra
+el modelo y el código con el stub, ni al revés.
+
+## Productor real de Entregas
+
+El equivalente de T15 para el Developer: la función que invoca al modelo y
+devuelve una Entrega. Mismo patrón que `productor.py` —factory, cliente
+inyectable, ningún test toca la red— con tres diferencias medidas.
+
+**Caché de prompt sobre el system prompt.** Los cuatro documentos que la Agent
+Definition del Developer declara leer pesan unos 14.000 tokens y viajan en cada
+iteración de cada unidad. Un plan de diez unidades con tres iteraciones son hasta
+treinta llamadas con el mismo prefijo: sin caché, el contexto solo se come el
+techo de USD 0.50 por unidad antes de generar una línea.
+
+**Streaming con `max_tokens` en 32.000.** Una Entrega son cuatro archivos
+completos escapados en JSON; el techo de 16.000 de T15 trunca en cuanto la unidad
+es real, y truncar cuesta una iteración pagada que devuelve entrega vacía.
+
+**La entrega vacía escala en vez de corregirse.** Si el modelo devuelve la
+entrega vacía del contrato con su motivo, el productor levanta `UnidadAmbigua`,
+el grafo del Developer la registra como `unidad_ambigua` y la cadena escala. No
+va al verificador y no cuenta como iteración mala: es el criterio 6 del piso de
+ADR-004, y reintentarla sería mandar a adivinar justo lo que el contrato prohíbe
+adivinar. El costo se cobra igual — la invocación se pagó.
+
+**El prompt no se desvía del verificador.** `verificador_entrega.REGLAS` declara
+los identificadores que el verificador puede emitir, y hay un test que exige que
+el prompt los nombre a todos. Sin eso los dos se separan en silencio y el modelo
+produce contra reglas que ya no son las que lo rechazan.
 
 ## Formulario de Intake (T8)
 
@@ -445,9 +476,9 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Ciento cincuenta tests, uno por cada fila de los criterios de aceptación de las
-ocho tareas, más los que cubren lo que se fue arreglando después, el verificador
-de entregas y la cadena de V0.2:
+Ciento setenta y seis tests, uno por cada fila de los criterios de aceptación de
+las ocho tareas, más los que cubren lo que se fue arreglando después y las piezas
+de V0.2:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -461,12 +492,13 @@ de entregas y la cadena de V0.2:
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
 | `test_correr.py` | 10 | el modo de producción a través de la reanudación |
 | `test_verificador_entrega.py` | 29 | un defecto sembrado por regla sobre la entrega limpia |
-| `test_cadena.py` | 17 | la cadena completa, el reintento, la detención y el techo de la cadena |
+| `test_cadena.py` | 18 | la cadena completa, el reintento, la detención y el techo de la cadena |
+| `test_productor_entrega.py` | 25 | el productor de entregas, con cliente falso |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
 
-**Ningún test invoca al modelo.** T15 se ejercita con un cliente falso y la CLI
-con un espía en lugar del productor real; `.env` queda fuera de juego para que
-la credencial verdadera no se cuele en el entorno de un test. Correr la suite no
+**Ningún test invoca al modelo.** Los dos productores reales se ejercitan con un
+cliente falso y la CLI con un espía en lugar del productor; `.env` queda fuera
+de juego para que la credencial verdadera no se cuele en el entorno de un test. Correr la suite no
 cuesta plata.

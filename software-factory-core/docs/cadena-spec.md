@@ -178,11 +178,27 @@ Ninguno exigió tocar el esquema de la base ni los triggers de inmutabilidad.
 
 ## Modo de producción
 
-**No existe todavía un productor de entregas contra el modelo** — es el
-equivalente de T15 para el Developer. Lo único disponible es el stub, así que
-pedir la cadena en modo modelo **falla nombrando eso**. Caer al stub en una
-corrida que alguien abrió creyendo que produce contra el modelo entregaría código
-de relleno con apariencia de código producido.
+**Un solo modo para toda la cadena.** El plan y las entregas se producen con lo
+mismo: `--stub` usa los dos productores de relleno, y el modo modelo usa los dos
+reales —`productor.py` para el plan y `productor_entrega.py` para las entregas—.
+Una corrida no produce el plan contra el modelo y el código con el stub, ni al
+revés: es un solo hecho de la corrida.
+
+El productor de entregas contra el modelo es el equivalente de T15 para el
+Developer, y tiene tres diferencias con aquel, las tres medidas:
+
+- **Caché de prompt sobre el system prompt.** Los cuatro documentos que el
+  Developer lee pesan ~14.000 tokens y viajan en cada iteración de cada unidad.
+  Un plan de diez unidades con tres iteraciones son hasta treinta llamadas con el
+  mismo prefijo; sin caché el contexto solo se come el techo de USD 0.50.
+- **Streaming con `max_tokens` en 32.000.** Una Entrega son cuatro archivos
+  completos escapados en JSON. El techo de T15 trunca en cuanto la unidad es
+  real, y truncar cuesta una iteración pagada que no sirve.
+- **La entrega vacía escala en vez de corregirse.** `UnidadAmbigua` sale del
+  productor, la atrapa el grafo del Developer y se registra como
+  `unidad_ambigua`. No va al verificador y no cuenta como iteración mala:
+  reintentarla tres veces quemaría el techo en una unidad que ya dijo que no se
+  puede.
 
 Con qué definición de Developer corre la cadena es un hecho de la corrida
 —`developer_fijado`—, con el mismo criterio que el modo de producción: reanudar
@@ -209,6 +225,6 @@ checkpointer y un directorio de trabajo temporales.
 
 ## Fuera de alcance
 
-No hay productor de entregas contra el modelo. No hay paralelismo. No hay
+No hay paralelismo. No hay
 reanudación parcial dentro de una unidad. No se verifica que el código haga lo
 que la unidad pedía: eso es verificación sustantiva y llega en V0.3.
