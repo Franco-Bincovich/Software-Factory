@@ -36,6 +36,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 import cadena  # noqa: E402
 import grafo  # noqa: E402
 import productor  # noqa: E402
+import productor_entrega  # noqa: E402
 from agent_loader import CargaFallida, cargar  # noqa: E402
 from intake import PedidoRechazado  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
@@ -242,6 +243,20 @@ def _checkpointer(ruta):
     return grafo.abrir_checkpointer(ruta)
 
 
+def _credencial_y_modelo():
+    """La credencial y el nombre del modelo, del entorno. Los dos productores usan esto."""
+    load_dotenv(RAIZ / ".env")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        raise SinCredencial(
+            "ANTHROPIC_API_KEY no configurada. Agregala en .env "
+            "(hay una plantilla en .env.example). Para correr sin modelo, "
+            "usá --stub."
+        )
+    modelo = os.environ.get("ANTHROPIC_MODEL", "").strip() or productor.MODELO_POR_DEFECTO
+    return api_key, modelo
+
+
 def elegir_productor(modo, ruta_vault):
     """Devuelve `(producir_fn, costo_por_defecto, nombre_del_modelo)`.
 
@@ -255,16 +270,21 @@ def elegir_productor(modo, ruta_vault):
     if modo == grafo.MODO_STUB:
         return producir_stub, COSTO_STUB, None
 
-    load_dotenv(RAIZ / ".env")
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        raise SinCredencial(
-            "ANTHROPIC_API_KEY no configurada. Agregala en .env "
-            "(hay una plantilla en .env.example). Para correr sin modelo, "
-            "usá --stub."
-        )
-    modelo = os.environ.get("ANTHROPIC_MODEL", "").strip() or productor.MODELO_POR_DEFECTO
+    api_key, modelo = _credencial_y_modelo()
     return productor.crear_productor(api_key, modelo, ruta_vault), 0.0, modelo
+
+
+def elegir_productor_de_entregas(modo, ruta_vault):
+    """Devuelve `(producir_entrega_fn, costo_por_defecto)`.
+
+    El mismo criterio que `elegir_productor`, para el otro extremo de la cadena:
+    el productor real mide su propio costo, así que el por defecto queda en cero.
+    """
+    if modo == grafo.MODO_STUB:
+        return producir_entrega_stub, COSTO_STUB
+
+    api_key, modelo = _credencial_y_modelo()
+    return productor_entrega.crear_productor(api_key, modelo, ruta_vault), 0.0
 
 
 class SinCredencial(RuntimeError):
@@ -314,39 +334,27 @@ def developer_para_reanudar(store, run_id, declarada):
     return registrada
 
 
-class SinProductorDeEntregas(RuntimeError):
-    """Se pidió correr la cadena contra el modelo y no hay quién produzca entregas."""
-
-
 def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, conservar, modo):
     """Devuelve `(ejecutar_unidades_fn, borrar_trabajo_fn)`, o `(None, None)`.
 
     Sin definición de Developer no hay cadena: la corrida cierra con el plan
     verificado, que es el Requirement Agent corriendo solo.
 
-    **En modo modelo falla, y a propósito.** El productor de entregas contra el
-    modelo todavía no existe —es el equivalente de T15 para el Developer—, así
-    que lo único disponible es el stub. Caer al stub en una corrida que alguien
-    abrió creyendo que produce contra el modelo entregaría código de relleno con
-    apariencia de código producido, que es peor que no correr.
+    El modo de la cadena es el mismo que el del plan y no se elige por separado:
+    una corrida no produce el plan contra el modelo y el código con el stub, ni
+    al revés. Es un solo hecho de la corrida.
     """
     if not ruta_definicion_developer:
         return None, None
-    if modo != grafo.MODO_STUB:
-        raise SinProductorDeEntregas(
-            "no existe todavía un productor de entregas contra el modelo: el "
-            "Developer solo tiene stub. Corré la cadena con --stub, o corré sin "
-            "--definicion-developer para que la corrida cierre con el plan "
-            "verificado."
-        )
     definicion = cargar(ruta_definicion_developer)
+    producir_entrega_fn, costo = elegir_productor_de_entregas(modo, ruta_vault)
     nodo = cadena.nodo_ejecutar_unidades(
         store,
         definicion,
-        producir_entrega_stub,
+        producir_entrega_fn,
         raiz_trabajo or cadena.RAIZ_TRABAJO_POR_DEFECTO,
         ruta_vault,
-        COSTO_STUB,
+        costo,
     )
     return nodo, (None if conservar else cadena.borrar_directorio)
 
@@ -474,7 +482,6 @@ def main(argv=None):
             ModoNoRegistrado,
             grafo.CorridaInexistente,
             SinCredencial,
-            SinProductorDeEntregas,
             productor.ModeloSinPrecio,
         ) as error:
             print("error: %s" % error, file=sys.stderr)
