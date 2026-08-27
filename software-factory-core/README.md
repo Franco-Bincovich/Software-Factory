@@ -20,6 +20,7 @@ esa corrida produzca algo — y lo que hace que cueste plata.
 schema/     esquema JSON del Plan de Trabajo
 src/        las ocho piezas
 templates/  la plantilla de pedido
+examples/   un pedido de ejemplo, válido y listo para correr
 fixtures/   el pedido base y los seis planes de prueba
 tests/      un archivo por pieza
 docs/       las especificaciones
@@ -101,9 +102,16 @@ tres techos. Los términos de `alcance_excluido` conviene escribirlos como uno
 espera verlos en un plan —`"interfaz gráfica"`, no `"nada visual"`—, porque es
 contra esa lista que T7 evalúa su regla 5.
 
+[`examples/pedido-ejemplo.json`](examples/pedido-ejemplo.json) es esa plantilla
+completada: un pedido válido, con los seis campos y los tres techos puestos, que
+sirve para ver la forma de uno bueno antes de escribir el propio.
+
 ```
-./.venv/bin/python src/intake.py --pedido mi-pedido.json
+./.venv/bin/python src/intake.py --pedido examples/pedido-ejemplo.json
 ```
+
+El pedido propio no se versiona: `mi-pedido.json` está en `.gitignore`, porque
+es de quien corre la fábrica y no del repositorio.
 
 Imprime el `run_id` y termina en 0 si el pedido entra. Si no, imprime cada
 rechazo con su campo y su motivo, y termina en 1.

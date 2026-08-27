@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+
+# el pedido propio de quien corre la fábrica; el versionado es examples/pedido-ejemplo.json
+mi-pedido.json

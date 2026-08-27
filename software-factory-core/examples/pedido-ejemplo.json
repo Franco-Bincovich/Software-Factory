@@ -1,0 +1,12 @@
+{
+  "que_se_quiere": "Una herramienta que lea un CSV de altas de empleados y reporte qué filas no se pueden importar, con el número de fila y el motivo de cada una",
+  "para_que": "Que el equipo de RRHH corrija el archivo antes de cargarlo, en vez de descubrir los errores durante la importación",
+  "alcance_excluido": [
+    "interfaz gráfica",
+    "conexión al sistema viejo",
+    "corrección automática de las filas"
+  ],
+  "techo_costo_usd": 1.0,
+  "techo_tiempo_min": 15,
+  "techo_iteraciones": 3
+}
