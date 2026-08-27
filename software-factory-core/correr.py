@@ -33,9 +33,10 @@ from dotenv import load_dotenv
 RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ / "src"))
 
+import cadena  # noqa: E402
 import grafo  # noqa: E402
 import productor  # noqa: E402
-from agent_loader import CargaFallida  # noqa: E402
+from agent_loader import CargaFallida, cargar  # noqa: E402
 from intake import PedidoRechazado  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
 
@@ -95,6 +96,142 @@ def producir_stub(pedido, plan_anterior, incumplimientos, contexto_vault):
     }
 
 
+def producir_entrega_stub(unidad, contexto_unidades, entrega_anterior, incumplimientos,
+                          contexto_vault):
+    """Developer de relleno. Arma una Entrega mínima que pasa el verificador.
+
+    No invoca a ningún modelo. Existe para que la cadena se pueda correr de punta
+    a punta sin gastar y para que la forma del contrato quede fijada, igual que
+    `producir_stub` para el plan.
+
+    Si recibe incumplimientos **corrige la entrega anterior** en vez de
+    regenerarla, que es lo que exige el campo 9 de la Agent Definition. La única
+    corrección que sabe hacer es reponer los archivos que falten, conservando
+    intactos los que ya estaban.
+    """
+    uid = unidad["id"]
+    slug = uid.lower()
+    funcion = "resolver%s" % uid
+    ruta_logica = "src/%s.js" % slug
+
+    logica = (
+        "// Unidad %s - producida por el stub del Developer. No hubo modelo.\n"
+        "function %s(entrada) {\n"
+        '  if (typeof entrada !== "string" || entrada.trim() === "") {\n'
+        '    return { ok: false, motivo: "vacio" };\n'
+        "  }\n"
+        "  return { ok: true, motivo: null, valor: entrada.trim() };\n"
+        "}\n"
+        "\n"
+        'if (typeof module !== "undefined") {\n'
+        "  module.exports = { %s };\n"
+        "}\n" % (uid, funcion, funcion)
+    )
+
+    pruebas = (
+        'const test = require("node:test");\n'
+        'const assert = require("node:assert");\n'
+        'const { %s } = require("../%s");\n'
+        "\n"
+        'test("una entrada con texto se resuelve", () => {\n'
+        '  assert.deepStrictEqual(%s("dato"), { ok: true, motivo: null, valor: "dato" });\n'
+        "});\n"
+        "\n"
+        'test("una entrada vacia se rechaza", () => {\n'
+        '  assert.deepStrictEqual(%s(""), { ok: false, motivo: "vacio" });\n'
+        "});\n" % (funcion, ruta_logica, funcion, funcion)
+    )
+
+    pruebas_html = (
+        "<!doctype html>\n"
+        '<meta charset="utf-8">\n'
+        "<title>Pruebas - %s</title>\n"
+        '<script src="./%s"></script>\n'
+        "\n"
+        "<h1>%s - criterios de aceptacion</h1>\n"
+        '<p id="resumen"></p>\n'
+        '<table id="tabla" border="1" cellpadding="6">\n'
+        "  <tr><th>Entrada</th><th>Esperado</th><th>Obtenido</th><th>Veredicto</th></tr>\n"
+        "</table>\n"
+        "\n"
+        "<script>\n"
+        "  const casos = [\n"
+        '    { entrada: "dato", esperado: { ok: true, motivo: null, valor: "dato" } },\n'
+        '    { entrada: "", esperado: { ok: false, motivo: "vacio" } },\n'
+        "  ];\n"
+        "\n"
+        "  let pasan = 0;\n"
+        '  const tabla = document.getElementById("tabla");\n'
+        "\n"
+        "  for (const caso of casos) {\n"
+        "    const obtenido = %s(caso.entrada);\n"
+        "    const paso = JSON.stringify(obtenido) === JSON.stringify(caso.esperado);\n"
+        "    if (paso) pasan++;\n"
+        "\n"
+        "    const fila = tabla.insertRow();\n"
+        '    fila.style.background = paso ? "#d8f5d8" : "#f5d8d8";\n'
+        "    fila.insertCell().textContent = JSON.stringify(caso.entrada);\n"
+        "    fila.insertCell().textContent = JSON.stringify(caso.esperado);\n"
+        "    fila.insertCell().textContent = JSON.stringify(obtenido);\n"
+        '    fila.insertCell().textContent = paso ? "PASA" : "FALLA";\n'
+        "  }\n"
+        "\n"
+        '  document.getElementById("resumen").textContent =\n'
+        '    pasan + " de " + casos.length + " criterios pasan.";\n'
+        "</script>\n" % (uid, ruta_logica, uid, funcion)
+    )
+
+    demo_html = (
+        "<!doctype html>\n"
+        '<meta charset="utf-8">\n'
+        "<title>Demo - %s</title>\n"
+        '<script src="./%s"></script>\n'
+        "\n"
+        "<h1>%s</h1>\n"
+        '<input id="entrada" placeholder="dato">\n'
+        '<button id="resolver">Resolver</button>\n'
+        '<p id="resultado"></p>\n'
+        "\n"
+        "<script>\n"
+        '  document.getElementById("resolver").addEventListener("click", () => {\n'
+        '    const r = %s(document.getElementById("entrada").value);\n'
+        '    document.getElementById("resultado").textContent =\n'
+        '      r.ok ? "Resuelto: " + r.valor : "Rechazado - " + r.motivo;\n'
+        "  });\n"
+        "</script>\n" % (uid, ruta_logica, uid, funcion)
+    )
+
+    completos = {
+        ruta_logica: logica,
+        "tests/%s.test.js" % slug: pruebas,
+        "pruebas.html": pruebas_html,
+        "demo.html": demo_html,
+    }
+
+    if entrega_anterior:
+        # Corrige: conserva lo que ya estaba y repone lo que falte.
+        archivos = list(entrega_anterior["archivos"])
+        presentes = {a["ruta"] for a in archivos}
+        for ruta, contenido in completos.items():
+            if ruta not in presentes:
+                archivos.append(
+                    {"ruta": ruta, "rol": "artefacto_esperado", "contenido": contenido}
+                )
+    else:
+        archivos = [
+            {"ruta": ruta, "rol": "artefacto_esperado", "contenido": contenido}
+            for ruta, contenido in completos.items()
+        ]
+
+    return {
+        "unidad": uid,
+        "archivos": archivos,
+        "supuestos": [
+            "Entrega producida por el stub del Developer: no hubo modelo involucrado.",
+        ],
+    }
+
+
 def _store(ruta):
     return OperationalState() if ruta is None else OperationalState(ruta)
 
@@ -140,6 +277,78 @@ class ModoContradictorio(RuntimeError):
 
 class ModoNoRegistrado(RuntimeError):
     """La corrida es anterior a que el modo se registrara como hecho suyo."""
+
+
+class DeveloperContradictorio(RuntimeError):
+    """La reanudación pide una definición de Developer y la corrida abrió con otra."""
+
+
+EVENTO_DEVELOPER = "developer_fijado"
+
+
+def developer_de(store, run_id):
+    """La definición de Developer con la que se abrió la corrida. `None` si no consta.
+
+    Mismo criterio que el modo de producción: con qué corre la cadena es un hecho
+    de la corrida, no un parámetro de la invocación. Reanudar con otra definición
+    cambiaría en silencio quién ejecutó las unidades.
+    """
+    for evento in store.leer_run(run_id):
+        if evento["tipo"] == EVENTO_DEVELOPER:
+            return evento["payload"].get("ruta")
+    return None
+
+
+def developer_para_reanudar(store, run_id, declarada):
+    """La definición con la que se retoma: la que la corrida registró."""
+    registrada = developer_de(store, run_id)
+    if registrada is None:
+        return declarada
+    if declarada is not None and str(declarada) != str(registrada):
+        raise DeveloperContradictorio(
+            "la corrida %s se abrió con la definición de Developer '%s' y se la "
+            "está reanudando con '%s'. Con qué corre la cadena es un hecho de la "
+            "corrida. Reanudala sin --definicion-developer y se retoma con la "
+            "registrada." % (run_id, registrada, declarada)
+        )
+    return registrada
+
+
+class SinProductorDeEntregas(RuntimeError):
+    """Se pidió correr la cadena contra el modelo y no hay quién produzca entregas."""
+
+
+def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, conservar, modo):
+    """Devuelve `(ejecutar_unidades_fn, borrar_trabajo_fn)`, o `(None, None)`.
+
+    Sin definición de Developer no hay cadena: la corrida cierra con el plan
+    verificado, que es el Requirement Agent corriendo solo.
+
+    **En modo modelo falla, y a propósito.** El productor de entregas contra el
+    modelo todavía no existe —es el equivalente de T15 para el Developer—, así
+    que lo único disponible es el stub. Caer al stub en una corrida que alguien
+    abrió creyendo que produce contra el modelo entregaría código de relleno con
+    apariencia de código producido, que es peor que no correr.
+    """
+    if not ruta_definicion_developer:
+        return None, None
+    if modo != grafo.MODO_STUB:
+        raise SinProductorDeEntregas(
+            "no existe todavía un productor de entregas contra el modelo: el "
+            "Developer solo tiene stub. Corré la cadena con --stub, o corré sin "
+            "--definicion-developer para que la corrida cierre con el plan "
+            "verificado."
+        )
+    definicion = cargar(ruta_definicion_developer)
+    nodo = cadena.nodo_ejecutar_unidades(
+        store,
+        definicion,
+        producir_entrega_stub,
+        raiz_trabajo or cadena.RAIZ_TRABAJO_POR_DEFECTO,
+        ruta_vault,
+        COSTO_STUB,
+    )
+    return nodo, (None if conservar else cadena.borrar_directorio)
 
 
 def modo_declarado(args):
@@ -208,6 +417,23 @@ def main(argv=None):
         help="Produce con el modelo real. Es el default; declararlo sirve para "
         "que una reanudación diga en voz alta con qué cree que corre.",
     )
+    parser.add_argument(
+        "--definicion-developer",
+        dest="definicion_developer",
+        help="Ruta a la Agent Definition del Developer. Con ella la corrida "
+        "encadena y ejecuta las unidades del plan; sin ella cierra con el plan "
+        "verificado.",
+    )
+    parser.add_argument(
+        "--trabajo",
+        help="Raíz donde se crea el directorio de trabajo descartable de la corrida.",
+    )
+    parser.add_argument(
+        "--conservar-trabajo",
+        dest="conservar_trabajo",
+        action="store_true",
+        help="No borra el directorio de trabajo después de aprobar el Gate de salida.",
+    )
     args = parser.parse_args(argv)
 
     if args.stub and args.modelo:
@@ -230,16 +456,25 @@ def main(argv=None):
         try:
             if args.reanudar:
                 modo = modo_para_reanudar(store, args.reanudar, declarado)
+                ruta_developer = developer_para_reanudar(
+                    store, args.reanudar, args.definicion_developer
+                )
             else:
                 modo = declarado or grafo.MODO_MODELO
+                ruta_developer = args.definicion_developer
             producir_fn, costo, nombre_modelo = elegir_productor(modo, args.vault)
-        except ModoContradictorio as error:
+            ejecutar_unidades_fn, borrar_trabajo_fn = armar_cadena(
+                store, ruta_developer, args.trabajo, args.vault,
+                args.conservar_trabajo, modo,
+            )
+        except (ModoContradictorio, DeveloperContradictorio) as error:
             print("error: %s" % error, file=sys.stderr)
             return 2
         except (
             ModoNoRegistrado,
             grafo.CorridaInexistente,
             SinCredencial,
+            SinProductorDeEntregas,
             productor.ModeloSinPrecio,
         ) as error:
             print("error: %s" % error, file=sys.stderr)
@@ -249,7 +484,8 @@ def main(argv=None):
 
         if args.reanudar:
             estado = grafo.reanudar(
-                args.reanudar, store, checkpointer, producir_fn, args.vault, costo
+                args.reanudar, store, checkpointer, producir_fn, args.vault, costo,
+                ejecutar_unidades_fn, borrar_trabajo_fn,
             )
             print("corrida %s: %s" % (args.reanudar, estado.get("resultado") or "en curso"))
             return 0
@@ -274,7 +510,16 @@ def main(argv=None):
             costo,
             modo=modo,
             modelo=nombre_modelo,
+            ejecutar_unidades_fn=ejecutar_unidades_fn,
+            borrar_trabajo_fn=borrar_trabajo_fn,
         )
+        # Se registra al volver, no antes: el run_id nace dentro de ejecutar. Una
+        # corrida nueva siempre frena en el Gate de entrada, así que el hecho
+        # queda escrito mucho antes de que corra la primera unidad.
+        if ruta_developer:
+            store.append(
+                run_id, EVENTO_DEVELOPER, "plataforma", {"ruta": str(ruta_developer)}
+            )
         print(run_id)
         return 0
 

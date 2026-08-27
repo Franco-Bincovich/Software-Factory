@@ -21,6 +21,19 @@ re-ejecuta el nodo interrumpido desde su primera línea. Un nodo de Gate que
 volviera a llamar a `abrir` chocaría con la regla de T11 que prohíbe dos Gates
 del mismo tipo en una corrida.
 
+**Desde V0.2 este grafo es el de la cadena, no el del Requirement solo.** La
+corrida del pedido lleva los dos Gates —entrada y salida—, el directorio de
+trabajo y el registro de qué unidades corrieron. El Gate de salida sobre el plan
+se suprimió: aprobar el plan y después aprobar la entrega que sale de él es
+aprobar dos veces lo mismo, y la defensa contra un plan malo pasa a ser el techo
+de la cadena. Está justificado en la versión 1.1 del Requirement Agent.
+
+**La ejecución de las unidades es un solo nodo acá y muchas corridas adentro.**
+El coordinador se inyecta, con el mismo criterio con el que se inyecta el
+productor: este módulo ordena y no sabe de Developers. Sin coordinador inyectado
+la corrida termina cuando el plan queda verificado, que es el Requirement Agent
+corriendo solo.
+
 **El modo de producción es un hecho de la corrida, no un parámetro de la
 invocación.** Se fija al abrirla y queda registrado antes de gastar un token.
 Una corrida iniciada con el stub se reanuda con el stub aunque quien la reanude
@@ -55,6 +68,22 @@ REANUDAR = "reanudar"
 AGENTE = "requirement-agent"
 PLATAFORMA = "plataforma"
 
+# Resultado de una corrida sin coordinador de cadena: el plan quedó verificado y
+# no hay quién lo ejecute. No es un fallo.
+SIN_DEVELOPER = "plan_verificado"
+
+# El régimen de Gates bajo el que corre la cadena, registrado como hecho de cada
+# corrida. Que el cambio esté en la versión de una Agent Definition no alcanza:
+# la corrida tiene que poder explicarse sola.
+EVENTO_GATES = "gates_de_la_cadena"
+GATES_DE_LA_CADENA = {
+    "gates": ["entrada", "salida"],
+    "suprimido": "salida_de_plan",
+    "motivo": "aprobar el plan y despues aprobar la entrega que sale de el es "
+    "aprobar dos veces lo mismo; la defensa contra un plan malo es el techo de "
+    "la cadena. Requirement Agent 1.1.",
+}
+
 # El hecho que fija con qué se produce esta corrida. Se escribe una sola vez, al
 # abrirla, y no se vuelve a tocar: el Operational State no admite update.
 EVENTO_MODO = "modo_produccion_fijado"
@@ -87,6 +116,8 @@ class EstadoGrafo(TypedDict):
     iteracion: int
     resultado: Optional[str]
     techos_efectivos: Dict[str, Any]
+    directorio: Optional[str]
+    entregas: List[Dict[str, Any]]
 
 
 class CorridaBloqueada(RuntimeError):
@@ -347,12 +378,24 @@ def _nodo_escalar(store):
     return nodo
 
 
-def _nodo_fin(store):
-    """Cierra la corrida. Toda corrida termina acá, se haya entregado o no."""
+def _nodo_fin(store, borrar_trabajo_fn=None):
+    """Cierra la corrida. Toda corrida termina acá, se haya entregado o no.
+
+    Es también donde se descarta el directorio de trabajo, y **solo si el Gate de
+    salida se resolvió aprobando**. Nunca antes: mientras el Gate esté pendiente,
+    o si la corrida escaló o fue rechazada, el directorio es justamente lo que la
+    persona necesita mirar.
+    """
 
     def nodo(estado):
         run_id = estado["run_id"]
         resultado = estado["resultado"] or "entregado"
+
+        if borrar_trabajo_fn is not None and estado.get("directorio"):
+            decision = gates.resolucion(store, run_id, "salida")
+            if decision is not None and decision["decision"] == "aprobado":
+                borrar_trabajo_fn(store, run_id, estado["directorio"])
+
         store.append(
             run_id,
             "run_cerrada",
@@ -362,6 +405,29 @@ def _nodo_fin(store):
         return {"resultado": resultado}
 
     return nodo
+
+
+def _nodo_sin_developer(estado):
+    """Sin coordinador inyectado, la corrida termina con el plan verificado.
+
+    Es el Requirement Agent corriendo solo. No es un fallo y no escala: produjo
+    lo que su Agent Definition dice que produce.
+    """
+    return {"resultado": SIN_DEVELOPER}
+
+
+def _somete_salida(estado):
+    """Lo que se somete en el Gate de salida de la cadena.
+
+    El contenido completo de los archivos no va acá: ya está en el Operational
+    State, y el Gate se resuelve abriendo los dos HTML del directorio de trabajo,
+    no leyendo JSON en una terminal.
+    """
+    return {
+        "directorio_trabajo": estado.get("directorio"),
+        "unidades": estado.get("entregas") or [],
+        "como_se_verifica": "abrir pruebas.html y demo.html de cada unidad en el navegador",
+    }
 
 
 # --- aristas condicionales --------------------------------------------------
@@ -380,6 +446,15 @@ def _tras_producir(estado):
     return "fallo" if estado["resultado"] else "verificar"
 
 
+def _tras_ejecutar_unidades(estado):
+    resultado = estado["resultado"]
+    if not resultado:
+        return "entrega"
+    if resultado == SIN_DEVELOPER:
+        return "fin"
+    return "escalar"
+
+
 def _tras_verificar(estado):
     if not estado["incumplimientos"]:
         return "valido"
@@ -391,11 +466,18 @@ def _tras_verificar(estado):
 # --- construcción -----------------------------------------------------------
 
 
-def crear_grafo(producir_fn, store, checkpointer, ruta_vault=None, costo_iteracion=0.0):
+def crear_grafo(
+    producir_fn, store, checkpointer, ruta_vault=None, costo_iteracion=0.0,
+    ejecutar_unidades_fn=None, borrar_trabajo_fn=None,
+):
     """Devuelve el grafo compilado. Nodos y aristas declarados a mano.
 
     No se usan constructores de agentes preconstruidos: es el punto 6 de
     ADR-006.
+
+    `ejecutar_unidades_fn` es el coordinador de la cadena. Se inyecta con el
+    mismo criterio que `producir_fn`: este módulo ordena la corrida y no sabe qué
+    es un Developer. Sin él, la corrida cierra con el plan verificado.
     """
     grafo = StateGraph(EstadoGrafo)
 
@@ -411,15 +493,12 @@ def crear_grafo(producir_fn, store, checkpointer, ruta_vault=None, costo_iteraci
     grafo.add_node("producir", _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion))
     grafo.add_node("verificar", _nodo_verificar(store))
     grafo.add_node(
-        "gate_salida",
-        _nodo_gate(
-            store,
-            "salida",
-            lambda e: {"plan": e["plan"], "veredicto": "valido"},
-        ),
+        "ejecutar_unidades",
+        _nodo_sin_developer if ejecutar_unidades_fn is None else ejecutar_unidades_fn,
     )
+    grafo.add_node("gate_salida", _nodo_gate(store, "salida", _somete_salida))
     grafo.add_node("escalar", _nodo_escalar(store))
-    grafo.add_node("fin", _nodo_fin(store))
+    grafo.add_node("fin", _nodo_fin(store, borrar_trabajo_fn))
 
     grafo.add_edge(START, "gate_entrada")
     grafo.add_conditional_edges(
@@ -434,7 +513,12 @@ def crear_grafo(producir_fn, store, checkpointer, ruta_vault=None, costo_iteraci
     grafo.add_conditional_edges(
         "verificar",
         _tras_verificar,
-        {"valido": "gate_salida", "reintenta": "verificar_techos", "agotado": "escalar"},
+        {"valido": "ejecutar_unidades", "reintenta": "verificar_techos", "agotado": "escalar"},
+    )
+    grafo.add_conditional_edges(
+        "ejecutar_unidades",
+        _tras_ejecutar_unidades,
+        {"entrega": "gate_salida", "fin": "fin", "escalar": "escalar"},
     )
     grafo.add_edge("gate_salida", "fin")
     grafo.add_edge("escalar", "fin")
@@ -461,6 +545,8 @@ def ejecutar(
     *,
     modo,
     modelo=None,
+    ejecutar_unidades_fn=None,
+    borrar_trabajo_fn=None,
 ):
     """Corre la fase previa y lanza el grafo. Devuelve el `run_id`.
 
@@ -502,6 +588,7 @@ def ejecutar(
     if modo == MODO_MODELO and modelo:
         hecho_modo["modelo"] = modelo
     store.append(run_id, EVENTO_MODO, PLATAFORMA, hecho_modo)
+    store.append(run_id, EVENTO_GATES, PLATAFORMA, dict(GATES_DE_LA_CADENA))
 
     estado = EstadoGrafo(
         run_id=run_id,
@@ -513,9 +600,14 @@ def ejecutar(
         iteracion=0,
         resultado=None,
         techos_efectivos=efectivos,
+        directorio=None,
+        entregas=[],
     )
 
-    grafo = crear_grafo(producir_fn, store, checkpointer, ruta_vault, costo_iteracion)
+    grafo = crear_grafo(
+        producir_fn, store, checkpointer, ruta_vault, costo_iteracion,
+        ejecutar_unidades_fn, borrar_trabajo_fn,
+    )
     grafo.invoke(estado, _config(run_id))
     return run_id
 
@@ -534,7 +626,10 @@ def modo_de(store, run_id):
     return None
 
 
-def reanudar(run_id, store, checkpointer, producir_fn, ruta_vault=None, costo_iteracion=0.0):
+def reanudar(
+    run_id, store, checkpointer, producir_fn, ruta_vault=None, costo_iteracion=0.0,
+    ejecutar_unidades_fn=None, borrar_trabajo_fn=None,
+):
     """Retoma una corrida. Devuelve el estado final del grafo.
 
     Distingue dos situaciones que LangGraph reanuda distinto: una corrida
@@ -542,7 +637,10 @@ def reanudar(run_id, store, checkpointer, producir_fn, ruta_vault=None, costo_it
     mitad de un nodo se retoma sin entrada. En los dos casos los nodos ya
     completados no se repiten.
     """
-    grafo = crear_grafo(producir_fn, store, checkpointer, ruta_vault, costo_iteracion)
+    grafo = crear_grafo(
+        producir_fn, store, checkpointer, ruta_vault, costo_iteracion,
+        ejecutar_unidades_fn, borrar_trabajo_fn,
+    )
     config = _config(run_id)
 
     instantanea = grafo.get_state(config)

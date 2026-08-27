@@ -282,7 +282,14 @@ class BaseGrafo(unittest.TestCase):
         )
 
     def hasta_el_final(self, productor=productor_valido, pedido=None, costo=0.0, vault=None):
-        """Corrida completa con los dos Gates aprobados."""
+        """Corrida completa del Requirement solo, sin coordinador de cadena.
+
+        Sin Developer inyectado la corrida cierra con el plan verificado y no
+        abre Gate de salida: el de salida es de la cadena y se resuelve sobre la
+        entrega. El Gate de salida sobre el plan se suprimió en la versión 1.1 de
+        la Agent Definition. La rama de abajo queda porque el helper también
+        sirve para corridas con cadena.
+        """
         run = self.correr(productor, pedido, costo, vault)
         gates.resolver(self.store, run, "entrada", "aprobado")
         estado = self.retomar(run, productor, costo, vault)
@@ -381,10 +388,12 @@ class RechazoEnEntrada(BaseGrafo):
 
 
 class CorridaCompleta(BaseGrafo):
-    def test_ambos_gates_aprobados_y_plan_valido(self):
+    def test_gate_de_entrada_aprobado_y_plan_valido(self):
         run, estado = self.hasta_el_final(costo=0.1)
 
-        self.assertEqual(estado["resultado"], "entregado")
+        # Sin cadena, la corrida termina con el plan verificado. No hay Gate de
+        # salida sobre el plan: se suprimió al encadenar el Developer.
+        self.assertEqual(estado["resultado"], grafo.SIN_DEVELOPER)
         self.assertEqual(estado["incumplimientos"], [])
         self.assertEqual(estado["iteracion"], 1)
 
@@ -396,13 +405,12 @@ class CorridaCompleta(BaseGrafo):
                 "techos_declarados",
                 "techos_efectivos",
                 "modo_produccion_fijado",
+                "gates_de_la_cadena",
                 "gate_abierto",
                 "gate_resuelto",
                 "consumo_registrado",
                 "iteracion_producida",
                 "verificacion_ejecutada",
-                "gate_abierto",
-                "gate_resuelto",
                 "run_cerrada",
             ],
         )
@@ -420,7 +428,7 @@ class Correccion(BaseGrafo):
         productor = productor_que_corrige(registro)
         run, estado = self.hasta_el_final(productor)
 
-        self.assertEqual(estado["resultado"], "entregado")
+        self.assertEqual(estado["resultado"], grafo.SIN_DEVELOPER)
         self.assertEqual(len(self.de_tipo(run, "iteracion_producida")), 2)
         self.assertEqual(len(self.de_tipo(run, "verificacion_ejecutada")), 2)
 
@@ -536,18 +544,16 @@ class ReanudacionTrasFallo(BaseGrafo):
         eventos_antes = self.eventos_totales()
 
         estado = self.retomar(run, explota)
-        self.assertTrue(gates.esta_bloqueada(self.store, run))
-        gates.resolver(self.store, run, "salida", "aprobado")
-        estado = self.retomar(run, explota)
 
-        self.assertEqual(estado["resultado"], "entregado")
+        self.assertEqual(estado["resultado"], grafo.SIN_DEVELOPER)
         self.assertGreater(self.eventos_totales(), eventos_antes)
 
-        # El Gate de entrada no se repitió: una apertura y una resolución.
+        # El Gate de entrada no se repitió: una apertura y una resolución. Y no
+        # hay Gate de salida, porque sin cadena no hay entrega que aprobar.
         aperturas = [e["payload"]["gate"] for e in self.de_tipo(run, "gate_abierto")]
-        self.assertEqual(aperturas, ["entrada", "salida"])
+        self.assertEqual(aperturas, ["entrada"])
         resoluciones = [e["payload"]["gate"] for e in self.de_tipo(run, "gate_resuelto")]
-        self.assertEqual(resoluciones, ["entrada", "salida"])
+        self.assertEqual(resoluciones, ["entrada"])
         # Y se produjo una sola vez, pese a las dos reanudaciones.
         self.assertEqual(len(self.de_tipo(run, "iteracion_producida")), 1)
 
@@ -575,7 +581,7 @@ class Trazabilidad(BaseGrafo):
 
         # Quién aprobó qué.
         resueltos = self.de_tipo(run, "gate_resuelto")
-        self.assertEqual([e["payload"]["gate"] for e in resueltos], ["entrada", "salida"])
+        self.assertEqual([e["payload"]["gate"] for e in resueltos], ["entrada"])
         for evento in resueltos:
             self.assertEqual(evento["actor"], "CEO")
             self.assertEqual(evento["payload"]["decision"], "aprobado")
@@ -587,7 +593,16 @@ class Trazabilidad(BaseGrafo):
 
         # Cuánto consumió y cómo terminó.
         self.assertAlmostEqual(presupuesto.consumo(self.store, run)["costo"], 0.1)
-        self.assertEqual(por_tipo["run_cerrada"]["payload"]["resultado"], "entregado")
+        self.assertEqual(
+            por_tipo["run_cerrada"]["payload"]["resultado"], grafo.SIN_DEVELOPER
+        )
+
+        # La corrida declara bajo qué régimen de Gates corrió, sin que haya que
+        # deducirlo de la versión del código que la ejecutó.
+        regimen = por_tipo[grafo.EVENTO_GATES]["payload"]
+        self.assertEqual(regimen["gates"], ["entrada", "salida"])
+        self.assertEqual(regimen["suprimido"], "salida_de_plan")
+        self.assertTrue(regimen["motivo"].strip())
 
         # La secuencia está ordenada y es la única fuente consultada.
         self.assertEqual([e["id"] for e in eventos], sorted(e["id"] for e in eventos))
@@ -612,7 +627,7 @@ class SinEscrituraEnElVault(BaseGrafo):
         run, estado = self.hasta_el_final(
             productor_que_corrige(registro), costo=0.1, vault=str(self.vault)
         )
-        self.assertEqual(estado["resultado"], "entregado")
+        self.assertEqual(estado["resultado"], grafo.SIN_DEVELOPER)
 
         # El agente sí leyó lo que declara `vault_lectura`, ni más ni menos.
         self.assertEqual(sorted(registro[0]["contexto_vault"]), sorted(LECTURA))
