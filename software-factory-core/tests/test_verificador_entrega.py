@@ -13,6 +13,7 @@ su assert.
 """
 
 import copy
+import hashlib
 import json
 import sys
 import unittest
@@ -252,6 +253,180 @@ class DefectoSembrado(unittest.TestCase):
         r = self._comprobar(e, plan(), "V4")
         self.assertEqual(len(r["incumplimientos"]), 2)
         self.assertTrue(any("HTML estático" in i["detalle"] for i in r["incumplimientos"]))
+
+    def test_v5_manifiesto_de_dependencias(self):
+        e = entrega()
+        e["archivos"].append(
+            {
+                "ruta": "package.json",
+                "rol": "auxiliar",
+                "motivo": "declara las dependencias",
+                "contenido": '{ "dependencies": { "lodash": "^4.17.21" } }\n',
+            }
+        )
+        r = self._comprobar(e, plan(), "V5")
+        self.assertEqual(r["incumplimientos"][0]["archivo"], "package.json")
+        self.assertIn("instalar", r["incumplimientos"][0]["detalle"])
+
+    def test_v5_dependencia_ya_instalada(self):
+        e = entrega()
+        e["archivos"].append(
+            {
+                "ruta": "node_modules/lodash/index.js",
+                "rol": "auxiliar",
+                "motivo": "la biblioteca",
+                "contenido": "module.exports = {};\n",
+            }
+        )
+        r = self._comprobar(e, plan(), "V5")
+        self.assertEqual(r["incumplimientos"][0]["archivo"], "node_modules/lodash/index.js")
+
+    def test_v5_require_de_un_paquete_externo(self):
+        e = entrega()
+        pruebas = archivo(e, "tests/validar-legajo.test.js")
+        pruebas["contenido"] = 'const _ = require("lodash");\n' + pruebas["contenido"]
+        r = self._comprobar(e, plan(), "V5")
+        self.assertIn("lodash", r["incumplimientos"][0]["detalle"])
+        self.assertIn("instalarlo", r["incumplimientos"][0]["detalle"])
+
+    def test_v5_import_de_un_paquete_externo(self):
+        e = entrega()
+        logica = archivo(e, "src/validar-legajo.js")
+        logica["contenido"] = 'import validator from "validator";\n' + logica["contenido"]
+        r = self._comprobar(e, plan(), "V5")
+        self.assertIn("validator", r["incumplimientos"][0]["detalle"])
+
+    def test_v5_require_relativo_que_sale_del_directorio_de_la_unidad(self):
+        """C2 no lo ve: mira las rutas declaradas, no las que el código resuelve.
+
+        La ruta `tests/validar-legajo.test.js` es relativa y no tiene `..`, así
+        que C2 la aprueba. El `require` de adentro sí se escapa.
+        """
+        e = entrega()
+        pruebas = archivo(e, "tests/validar-legajo.test.js")
+        pruebas["contenido"] = pruebas["contenido"].replace(
+            '"../src/validar-legajo.js"', '"../../U1/src/validar-legajo.js"'
+        )
+        r = self._comprobar(e, plan(), "V5")
+        self.assertIn("fuera del directorio de la unidad", r["incumplimientos"][0]["detalle"])
+
+    def test_v5_require_de_una_ruta_absoluta(self):
+        e = entrega()
+        logica = archivo(e, "src/validar-legajo.js")
+        logica["contenido"] += '\nconst otro = require("/opt/lib/otro.js");\n'
+        r = self._comprobar(e, plan(), "V5")
+        self.assertIn("ruta absoluta", r["incumplimientos"][0]["detalle"])
+
+    def test_v5_script_src_a_un_cdn(self):
+        """P1 conoce `fetch` y compañía, no un `src`: sin V5 esto se bajaba de la red."""
+        e = entrega()
+        demo = archivo(e, "demo.html")
+        demo["contenido"] = demo["contenido"].replace(
+            '<script src="./src/validar-legajo.js"></script>',
+            '<script src="https://cdn.ejemplo.test/lib.js"></script>\n'
+            '<script src="./src/validar-legajo.js"></script>',
+        )
+        r = self._comprobar(e, plan(), "V5")
+        self.assertIn("se baja de la red", r["incumplimientos"][0]["detalle"])
+
+    def test_v5_los_builtins_de_node_y_las_rutas_propias_pasan(self):
+        """La entrega limpia ya usa `node:test`, `node:assert` y `../src/…`.
+
+        Se afirma explícito porque es la mitad de la regla: V5 rechazando todo
+        sería igual de inútil que V5 no existiendo.
+        """
+        e = entrega()
+        logica = archivo(e, "src/validar-legajo.js")
+        logica["contenido"] += '\nconst path = require("node:path");\n'
+        logica["contenido"] += 'const { sep } = require("path");\n'
+        logica["contenido"] += 'const fsp = require("fs/promises");\n'
+        fallos = [
+            i for i in verificar(e, plan())["incumplimientos"] if i["regla"] == "V5"
+        ]
+        self.assertEqual(fallos, [])
+
+
+ENTREGA_DEPOSITADA = FIXTURES / "entrega-depositada"
+
+# Los cuatro entregables tal como quedaron en el área de entregas, con su hash.
+# El hash está acá para que se note si alguien los edita: dejarían de ser la
+# evidencia que este test dice estar usando.
+ENTREGABLES_DEPOSITADOS = {
+    "src/u1.js": "337bda7982233dfd35ecbe3f82006981",
+    "tests/u1.test.js": "b0446b133e317d139ee65b00c327502d",
+    "pruebas.html": "2c3616861b01c30a582ce3a814504d17",
+    "demo.html": "ffb87315d407ccc50c979fbe3c206f0f",
+}
+
+
+class TrabajoYaAprobado(unittest.TestCase):
+    """V5 contra entregas reales que ya pasaron el Gate de salida.
+
+    Es la comprobación que decide si la regla está bien escrita. Los casos
+    sembrados sólo demuestran que V5 rechaza; éste demuestra que rechaza *lo
+    que hay que rechazar*. Si marca trabajo que el CEO ya aprobó, está mal la
+    regla, no el trabajo.
+
+    **De dónde salieron los fixtures.** Son copia byte a byte de
+    `entregas/5bf52c6d1bee4325b0ff563de29d3fb7/U1`, extraídos el 2026-08-28 del
+    área de entregas de la máquina del CEO. Ese día había dieciséis corridas
+    depositadas y los cuatro entregables eran **idénticos en las dieciséis**:
+    una variante de contenido por archivo, verificado por hash. Por eso una
+    unidad es el conjunto entero y no una muestra —copiar dieciséis veces los
+    mismos bytes no agregaría un solo caso—, y por eso cubre las dos formas de
+    carga que la fábrica produce hoy: `require` de builtin (`node:test`,
+    `node:assert`), `require` relativo al propio directorio (`../src/u1.js`) y
+    `<script src="./src/u1.js">`.
+
+    **Son reales, no inventados, pero salieron del stub.** La primera línea de
+    `src/u1.js` lo dice: "producida por el stub del Developer. No hubo modelo".
+    Son entregas que la cadena depositó y que el Gate aprobó, no código que un
+    modelo escribió. Para lo que este test comprueba —que V5 no rechace la
+    forma que la fábrica emite— alcanza; para afirmar que V5 tolera todo lo que
+    un modelo podría escribir, no. Cuando haya corridas reales conviene sumar
+    una acá.
+
+    Antes vivía leyendo `entregas/` directamente. Se cambió por dos razones:
+    ese directorio está fuera del repo, así que el test se salteaba en CI y en
+    cualquier otra máquina; y `test_cadena.py` deposita ahí sus propias
+    corridas, con lo que la suite terminaba validando en parte lo que ella
+    misma acababa de generar.
+    """
+
+    def test_los_entregables_depositados_pasan_v5(self):
+        for ruta, hash_esperado in sorted(ENTREGABLES_DEPOSITADOS.items()):
+            archivo_ = ENTREGA_DEPOSITADA / ruta
+            with self.subTest(archivo=ruta):
+                self.assertTrue(archivo_.is_file(), "falta el fixture %s" % ruta)
+                crudo = archivo_.read_bytes()
+                self.assertEqual(
+                    hashlib.md5(crudo).hexdigest(),
+                    hash_esperado,
+                    "%s ya no es la entrega que se depositó" % ruta,
+                )
+                # V5 razona sobre rutas relativas al directorio de la unidad,
+                # que es la raíz que la entrega declara. Es la misma forma en
+                # la que llegan por el campo `ruta`.
+                fallos = inspeccion_js.v5_autocontencion(
+                    ruta, crudo.decode("utf-8")
+                )
+                self.assertEqual(
+                    fallos, [], "V5 rechaza trabajo ya aprobado: %s" % ruta
+                )
+
+    def test_el_fixture_esta_completo(self):
+        """Un fixture vaciado a medias pasaría el test de arriba sin mirar nada.
+
+        Son los cuatro entregables que el contrato exige, ni uno más: un
+        archivo suelto en el directorio significa que alguien agregó un caso
+        inventado al conjunto que dice ser evidencia.
+        """
+        presentes = {
+            p.relative_to(ENTREGA_DEPOSITADA).as_posix()
+            for p in ENTREGA_DEPOSITADA.rglob("*")
+            if p.is_file()
+        }
+        self.assertEqual(presentes, set(ENTREGABLES_DEPOSITADOS))
 
 
 class SinNode(unittest.TestCase):

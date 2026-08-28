@@ -101,6 +101,7 @@ hay uno hace que el reintento corrija dos veces lo mismo.
 | `V2` | Los nombres que mencionan los criterios aparecen en el código | Parcial — ver abajo |
 | `V3` | `pruebas.html` invoca la función por su nombre | Total |
 | `V4` | Los veredictos salen de ejecutar la función, no de texto fijo | Parcial — ver abajo |
+| `V5` | La entrega se resuelve sola: nada que instalar ni que bajar | Parcial — ve especificadores literales |
 
 **R10 no está, y es deliberado.** "Diff limpio" sin diff se traduce a cosas que
 ya cubren `C5` —archivos que nadie pidió— y `R3` —restos de depuración y
@@ -125,6 +126,39 @@ sin elegirlo — `textContent = "PASA"` se marca, `textContent = paso ? "PASA" :
 devuelve y escribe "PASA" igual. Eso queda para el Gate humano, que es el que
 abre el archivo. Se declara acá para que nadie lea "pasó V4" como "las pruebas
 son de verdad".
+
+### `V5` — autocontención, y por qué no repite a `P1` ni a `P3`
+
+Sale de ADR-016 punto 2: un entregable que declare dependencias, requiera
+instalación, acceda a red o escriba fuera de su directorio se rechaza **por regla
+antes de ejecutarse**. Es la condición previa de la verificación sustantiva de
+V0.3: primero la regla que rechaza, después la ejecución.
+
+Existe porque hasta acá la autocontención era **emergente**. Se seguía de tres
+reglas escritas del Contrato de Entrega —carga por `<script src>` clásico sin
+módulos, apertura sin servidor ni instalación, y la prohibición de red—, pero
+ninguna de las nueve reglas de validez la comprobaba y este verificador no tenía
+regla equivalente. Que las doce corridas existentes no declaren dependencias es
+un hecho observado, no una garantía del sistema.
+
+**De las cuatro cosas que ADR-016 manda rechazar, dos ya se rechazaban.** Abrir
+la red desde el código es `P1`; escribir con `fs` o `child_process` es `P3`.
+Repetirlas acá violaría la regla del identificador más específico y haría que el
+reintento corrija dos veces el mismo defecto. V5 cubre lo que no cubría nadie:
+
+| Señal | Por qué no la veía otra regla |
+|---|---|
+| `package.json`, lockfiles, `node_modules` entre las rutas | `C5` los rechazaría como archivo que nadie pidió sólo si no vinieran declarados auxiliares con motivo |
+| `require`/`import` de un paquete | Ninguna regla miraba especificadores |
+| `require`/`import` relativo que se escapa del directorio | `C2` mira las rutas **declaradas**, no las que el código resuelve |
+| `<script src>` a una URL o a un CDN | `P1` conoce `fetch` y compañía, no un `src` |
+| `require` de una ruta absoluta | `C2` cubre la ruta del archivo, no la del módulo que pide |
+
+**Parcial**, como todas las léxicas: ve un especificador escrito entre comillas,
+no un nombre de módulo armado por concatenación en tiempo de ejecución. Y
+distingue dos lenguajes que conviven en una entrega: en `require`/`import` un
+nombre sin `./` es un paquete, y en el `src` de un `<script>` es una URL relativa
+corriente. Confundirlos sería un falso positivo sobre entregas correctas.
 
 ---
 

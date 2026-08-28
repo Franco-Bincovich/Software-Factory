@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pruebas - U1</title>
+<script src="./src/u1.js"></script>
+
+<h1>U1 - criterios de aceptacion</h1>
+<p id="resumen"></p>
+<table id="tabla" border="1" cellpadding="6">
+  <tr><th>Entrada</th><th>Esperado</th><th>Obtenido</th><th>Veredicto</th></tr>
+</table>
+
+<script>
+  const casos = [
+    { entrada: "dato", esperado: { ok: true, motivo: null, valor: "dato" } },
+    { entrada: "", esperado: { ok: false, motivo: "vacio" } },
+  ];
+
+  let pasan = 0;
+  const tabla = document.getElementById("tabla");
+
+  for (const caso of casos) {
+    const obtenido = resolverU1(caso.entrada);
+    const paso = JSON.stringify(obtenido) === JSON.stringify(caso.esperado);
+    if (paso) pasan++;
+
+    const fila = tabla.insertRow();
+    fila.style.background = paso ? "#d8f5d8" : "#f5d8d8";
+    fila.insertCell().textContent = JSON.stringify(caso.entrada);
+    fila.insertCell().textContent = JSON.stringify(caso.esperado);
+    fila.insertCell().textContent = JSON.stringify(obtenido);
+    fila.insertCell().textContent = paso ? "PASA" : "FALLA";
+  }
+
+  document.getElementById("resumen").textContent =
+    pasan + " de " + casos.length + " criterios pasan.";
+</script>

@@ -12,6 +12,7 @@ Varias de estas comprobaciones son léxicas y por lo tanto parciales. Están
 declaradas como tales una por una, con lo que cada una no puede ver.
 """
 
+import posixpath
 import re
 import shutil
 import subprocess
@@ -298,4 +299,133 @@ def v4_veredictos_fijos(ruta, contenido):
                             "devolvió la función: %s" % (literal, linea.strip()),
                         )
                     )
+    return fallos
+
+
+# --- V5 — autocontención ----------------------------------------------------
+
+# Los módulos que Node trae puestos. Todo lo demás que se pida por nombre hay
+# que instalarlo, y la frontera de ADR-016 no instala nada.
+BUILTINS_NODE = frozenset(
+    """
+    assert async_hooks buffer child_process cluster console constants crypto
+    dgram diagnostics_channel dns domain events fs http http2 https inspector
+    module net os path perf_hooks process punycode querystring readline repl
+    stream string_decoder sys timers tls trace_events tty url util v8 vm wasi
+    worker_threads zlib
+    """.split()
+)
+
+# Un manifiesto o un lockfile en la entrega es la declaración explícita de que
+# hace falta instalar algo antes de correr.
+ARCHIVOS_DE_DEPENDENCIAS = (
+    "package.json", "package-lock.json", "npm-shrinkwrap.json",
+    "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+)
+
+RE_REQUIRE = re.compile(r"""\brequire\s*\(\s*["']([^"']*)["']\s*\)""")
+RE_IMPORT_DINAMICO = re.compile(r"""\bimport\s*\(\s*["']([^"']*)["']\s*\)""")
+RE_IMPORT_DESDE = re.compile(
+    r"""^[ \t]*(?:import|export)\b[^\n;]*?\bfrom\s*["']([^"']*)["']""", re.M
+)
+RE_IMPORT_POR_EFECTO = re.compile(r"""^[ \t]*import\s+["']([^"']*)["']""", re.M)
+RE_URL = re.compile(r"^(?:[a-z][a-z0-9+.\-]*:)?//", re.I)
+RE_RUTA_ABSOLUTA = re.compile(r"^(?:/|[A-Za-z]:)")
+
+
+def _sale_del_directorio(ruta, especificador):
+    """Un especificador relativo que, resuelto desde su archivo, cae afuera.
+
+    Las rutas de la entrega son relativas al directorio de la unidad y sin `..`
+    —eso es C2—, así que el directorio de la unidad es la raíz de esas rutas.
+    Un `require("../../otro/x.js")` desde `tests/` sale de ahí, y C2 no lo ve:
+    C2 mira las rutas **declaradas**, no las que el código resuelve.
+    """
+    base = posixpath.dirname(ruta.replace("\\", "/"))
+    destino = posixpath.normpath(posixpath.join(base, especificador))
+    return destino == ".." or destino.startswith("../")
+
+
+def _rompe_la_autocontencion(ruta, especificador, pelado_es_paquete=True):
+    """Por qué el especificador rompe la autocontención, o `None` si no la rompe.
+
+    `pelado_es_paquete` distingue los dos lenguajes que se mezclan en una
+    entrega. Para `require` e `import`, un nombre sin `./` es un paquete que hay
+    que instalar. Para el `src` de un `<script>` no: ahí `src/u1.js` es una URL
+    relativa corriente y tratarla como paquete sería un falso positivo sobre
+    entregas correctas.
+    """
+    if not especificador.strip():
+        return None
+    if RE_URL.match(especificador):
+        return "'%s' se baja de la red al abrir el archivo" % especificador
+    if RE_RUTA_ABSOLUTA.match(especificador):
+        return "'%s' es una ruta absoluta: sale del directorio de la unidad" % especificador
+    if pelado_es_paquete:
+        if especificador.startswith("node:") or especificador.split("/")[0] in BUILTINS_NODE:
+            return None
+        if not especificador.startswith(("./", "../")):
+            return (
+                "'%s' es un paquete externo y habría que instalarlo antes de correr"
+                % especificador
+            )
+    if _sale_del_directorio(ruta, especificador):
+        return "'%s' apunta fuera del directorio de la unidad" % especificador
+    return None
+
+
+def _especificadores(texto):
+    """Todo lo que el texto pide cargar, por `require` o por `import`."""
+    return (
+        RE_REQUIRE.findall(texto)
+        + RE_IMPORT_DINAMICO.findall(texto)
+        + RE_IMPORT_DESDE.findall(texto)
+        + RE_IMPORT_POR_EFECTO.findall(texto)
+    )
+
+
+def v5_autocontencion(ruta, contenido):
+    """El entregable se resuelve solo: nada que instalar, nada que bajar.
+
+    Es la condición previa de ADR-016 punto 2 —"se rechaza por regla antes de
+    ejecutarse"—, y la razón por la que existe está en el propio ADR: hoy la
+    autocontención es **emergente**. Se sigue de que los HTML carguen con
+    `<script src>` clásico, de que se abran sin servidor y de la prohibición de
+    red, pero ninguna regla la comprueba. Una frontera que se apoya en que el
+    contenido resulte inofensivo no es una frontera.
+
+    **No repite lo que ya está cubierto.** Abrir la red desde el código es P1 y
+    escribir con `fs` es P3; volver a reportarlos acá mandaría a corregir dos
+    veces el mismo defecto, contra la regla del identificador más específico.
+    V5 mira otra cosa: de dónde sale el código que el entregable necesita.
+
+    **Parcial**, como las demás comprobaciones léxicas. Ve un especificador
+    escrito literalmente entre comillas; no ve un nombre de módulo armado por
+    concatenación en tiempo de ejecución.
+    """
+    normalizada = ruta.replace("\\", "/")
+    if posixpath.basename(normalizada) in ARCHIVOS_DE_DEPENDENCIAS:
+        return [
+            _hallazgo("V5", ruta, "El archivo declara dependencias que habría que instalar.")
+        ]
+    if "node_modules" in normalizada.split("/"):
+        return [_hallazgo("V5", ruta, "El archivo es una dependencia instalada.")]
+
+    # (especificador, si un nombre pelado significa paquete)
+    candidatos = []
+    if es_js(ruta):
+        candidatos = [(e, True) for e in _especificadores(contenido)]
+    elif es_html(ruta):
+        candidatos = [(src, False) for src in scripts_externos(contenido)]
+        for cuerpo in scripts_inline(contenido):
+            candidatos += [(e, True) for e in _especificadores(cuerpo)]
+
+    fallos, vistos = [], set()
+    for especificador, pelado_es_paquete in candidatos:
+        motivo = _rompe_la_autocontencion(ruta, especificador, pelado_es_paquete)
+        if motivo is not None and motivo not in vistos:
+            vistos.add(motivo)
+            fallos.append(
+                _hallazgo("V5", ruta, "El entregable no se resuelve solo: %s." % motivo)
+            )
     return fallos
