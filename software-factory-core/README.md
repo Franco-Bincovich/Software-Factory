@@ -557,7 +557,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Doscientos sesenta tests, uno por cada fila de los criterios de
+Doscientos sesenta y siete tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -573,7 +573,7 @@ después y las piezas de V0.2:
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 39 | un defecto sembrado por regla sobre la entrega limpia |
-| `test_cadena.py` | 36 | la cadena completa, el reintento, la detención y el techo de la cadena |
+| `test_cadena.py` | 43 | la cadena completa, el reintento, la detención, el techo de la cadena y el depósito de artefactos |
 | `test_productor_entrega.py` | 31 | el productor de entregas, con cliente falso |
 | `test_correr_cadena.py` | 19 | la costura entre la CLI y la cadena, y el régimen declarado |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |

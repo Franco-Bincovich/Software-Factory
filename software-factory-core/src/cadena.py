@@ -23,13 +23,14 @@ Operational State es de escritor único y la arquitectura declara un proyecto po
 vez; paralelizar es V0.4.
 """
 
-import hashlib
 import shutil
 from pathlib import Path
 
+import deposito
 import grafo_developer
 import operational_state
 import presupuesto
+from deposito import RutaFueraDelDirectorio, escribir_entrega, sha256_de
 from grafo import (
     EVENTO_PEDIDO_HEREDADO,
     EVENTO_PLAN_HEREDADO,
@@ -74,15 +75,6 @@ class CicloDeDependencias(RuntimeError):
     No debería llegar acá: es la regla 7 de T7 y el plan ya pasó por el
     verificador. Se comprueba igual porque el coordinador no da por buena la
     salida de otra pieza para decidir qué ejecuta.
-    """
-
-
-class RutaFueraDelDirectorio(RuntimeError):
-    """Una ruta de la entrega escaparía del directorio de trabajo.
-
-    Es la regla C2 del verificador de entregas, comprobada otra vez acá y a
-    propósito. Escribir es irreversible: lo que verifica un módulo y ejecuta otro
-    se comprueba en los dos.
     """
 
 
@@ -150,11 +142,24 @@ def unidades_entregadas(store, run_pedido):
 
 
 def entrega_de(store, run_developer):
-    """La última entrega producida por una corrida de Developer."""
+    """La última entrega producida por una corrida de Developer, con contenido.
+
+    **Es el único lector del payload de `entrega_producida`**, y por eso es acá
+    donde conviven las dos formas que ADR-017 punto 4 deja conviviendo. Un evento
+    viejo trae el contenido adentro; uno nuevo trae el hash y el domicilio, y el
+    contenido sale del depósito. Aguas abajo nadie distingue: `contexto_de`,
+    `_resumen` y `materializar_evidencia` reciben lo mismo que recibían.
+
+    Si el depósito no puede devolver lo que el evento afirma, esto **levanta**.
+    Devolver una entrega a medias sería peor que fallar: el consumidor que la
+    recibe es `productor_entrega`, que pega el código de las unidades de las que
+    depende adentro del prompt del modelo. Una entrega incompleta ahí no rompe
+    nada visible — produce una corrida cara contra un contexto mutilado.
+    """
     entrega = None
     for evento in store.leer_run(run_developer):
         if evento["tipo"] == "entrega_producida":
-            entrega = evento["payload"]["entrega"]
+            entrega = deposito.entrega_del_evento(evento["payload"], _base())
     return entrega
 
 
@@ -227,42 +232,6 @@ def ya_depositado(entregas_por_unidad):
     return inventario
 
 
-def escribir_entrega(directorio, entrega):
-    """Materializa los archivos de una entrega ya verificada.
-
-    Escribe la plataforma, no el agente: el agente declara qué archivos produjo y
-    la plataforma los deposita donde corresponde. Es la misma separación por la
-    que el agente no ejecuta su propia verificación.
-
-    Solo se llama con una entrega que pasó el verificador. Aun así se comprueba
-    que ninguna ruta escape del directorio, porque escribir no se deshace.
-    """
-    raiz = Path(directorio).resolve()
-    raiz.mkdir(parents=True, exist_ok=True)
-    escritos = []
-    for archivo in entrega["archivos"]:
-        destino = (raiz / archivo["ruta"]).resolve()
-        if raiz not in destino.parents and destino != raiz:
-            raise RutaFueraDelDirectorio(
-                "la ruta '%s' de la entrega quedaría fuera del directorio de "
-                "trabajo '%s'." % (archivo["ruta"], raiz)
-            )
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_text(archivo["contenido"], encoding="utf-8")
-        escritos.append(archivo["ruta"])
-    return escritos
-
-
-def sha256_de(contenido):
-    """El hash del archivo tal como el evento lo registra.
-
-    Se calcula sobre el texto codificado en UTF-8, que es exactamente lo que
-    `escribir_entrega` deposita en disco. Si se calculara sobre otra cosa, el hash
-    firmado en el Gate no serviría para comprobar el archivo materializado.
-    """
-    return hashlib.sha256(contenido.encode("utf-8")).hexdigest()
-
-
 class EvidenciaIncompleta(RuntimeError):
     """Una unidad consta como entregada pero su entrega no está en el registro.
 
@@ -274,10 +243,22 @@ class EvidenciaIncompleta(RuntimeError):
 def materializar_evidencia(store, run_pedido, raiz=None):
     """Escribe la evidencia de una corrida aprobada. ADR-015 punto 1.
 
-    **La fuente son los eventos, no el directorio de trabajo.** No es una copia
-    antes de borrar: es una reconstrucción del registro. Por eso el área de
-    entregas es derivable —si se pierde, se regenera— y por eso, si alguna vez
-    discrepara con los eventos, gana el evento (ADR-011).
+    **La fuente sigue sin ser el directorio de trabajo.** Lo que cambió con
+    ADR-017 es de dónde sale el contenido: antes venía adentro del evento, ahora
+    el evento da el hash y el domicilio y el contenido sale del depósito de la
+    iteración. La diferencia la absorbe `entrega_de` y acá no se nota.
+
+    Lo que sí cambia es el estatuto del resultado. ADR-015 punto 1 declaraba esta
+    área **derivable** —si se perdía, se regeneraba desde los eventos—. Por
+    ADR-017 punto 3 eso dejó de ser cierto: el contenido ya no está en el
+    registro, así que el área de entregas es el único lugar donde existe y se
+    respalda junto al `factory.db` o ninguno de los dos sirve.
+
+    **Duplica el contenido de la iteración aceptada, a propósito.** El depósito
+    de la iteración lo escribe el Developer antes de que exista un Gate, y esto
+    corre recién cuando el Gate aprueba: no puede ser el mismo directorio porque
+    todavía no se sabía que iba a haber aprobación. Uno respalda el evento y el
+    otro es lo que se le entrega a un tercero.
 
     Conserva el subdirectorio por unidad, por la misma razón que lo conserva el
     área de trabajo: los nombres del contrato son iguales para toda unidad y sin
@@ -309,11 +290,12 @@ def borrar_directorio(store, run_pedido, ruta):
     """Se borra **después** de que el Gate de salida se resolvió, nunca antes.
 
     Y después de materializar la evidencia, por ADR-015 punto 3. Borrarlo no
-    pierde nada: la entrega registrada en el Operational State lleva el contenido
-    completo de cada archivo, y desde ADR-015 además quedó escrita en el área de
-    entregas. Lo que se descarta es la copia de trabajo. Queda registrado con su
-    ruta, que es el ítem 8 de evidencia de la Agent Definition: sin eso, después
-    nadie puede saber qué se descartó.
+    pierde nada, pero desde ADR-017 el motivo es otro: el evento ya no lleva el
+    contenido, así que lo que respalda al borrado es el **área de entregas** —el
+    depósito de cada iteración y la evidencia materializada—, no el registro. Lo
+    que se descarta es la copia de trabajo. Queda registrado con su ruta, que es
+    el ítem 8 de evidencia de la Agent Definition: sin eso, después nadie puede
+    saber qué se descartó.
     """
     if ruta and Path(ruta).exists():
         shutil.rmtree(ruta)

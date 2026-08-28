@@ -281,7 +281,7 @@ Ninguno exigió tocar el esquema de la base ni los triggers de inmutabilidad.
 | `plan_detenido` | pedido | Qué falló y qué quedó sin ejecutar |
 | `techo_cadena_alcanzado` | pedido | Cuánto se gastó y cuál era el límite |
 | `cadena_iniciada` | Developer | De qué corrida de Requirement viene |
-| `entrega_producida` | Developer | La entrega de cada iteración, íntegra |
+| `entrega_producida` | Developer | Cada iteración: la ruta, el rol y el **SHA-256** de cada archivo, y el depósito donde vive el contenido. Desde ADR-017 el contenido no va adentro |
 | `verificacion_ejecutada` | Developer | **Mismo nombre que en T7**, a propósito: `presupuesto.consumo` cuenta iteraciones contando ese tipo |
 | `run_iniciada` | Developer | De ahí sale el arranque del reloj del techo de tiempo |
 
@@ -318,7 +318,7 @@ cambiaría en silencio quién ejecutó las unidades.
 
 ## Criterio de aceptación
 
-`tests/test_cadena.py`, treinta y seis tests contra un Operational State, un
+`tests/test_cadena.py`, cuarenta y tres tests contra un Operational State, un
 checkpointer y un directorio de trabajo temporales.
 
 | Cubre | Qué comprueba |
@@ -332,6 +332,7 @@ checkpointer y un directorio de trabajo temporales.
 | Techo de la cadena | Corta antes de lanzar la unidad que lo pasaría |
 | Directorio | Un subdirectorio por unidad; se borra recién tras el Gate aprobado; no se borra si escaló; una ruta que escapa no se escribe |
 | Idempotencia | Reentrar no relanza ni repaga lo entregado, y reusa el directorio |
+| Depósito de artefactos | El evento lleva hash y no contenido; la entrega se reconstruye desde el área; cada iteración deposita la suya, también la rechazada; un evento viejo con contenido se sigue leyendo; el hash detecta una alteración; falta un archivo y la cadena levanta en vez de armar un prompt incompleto; el corte deja archivos sin evento y el reintento los sobrescribe |
 
 `tests/test_herencia.py` cubre heredar un plan verificado: que ejecute sin
 producir uno nuevo, que las dos corridas queden atadas, que el techo se descuente

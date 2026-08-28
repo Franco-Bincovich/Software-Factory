@@ -21,9 +21,12 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+import deposito
+import operational_state
 import presupuesto
 import verificador_entrega
 from grafo import FalloDeInfraestructura, UnidadAmbigua, _Techos, leer_contexto_vault
+from operational_state import relativa_a
 
 AGENTE = "developer-agent"
 PLATAFORMA = "plataforma"
@@ -140,11 +143,25 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
 
         presupuesto.registrar_consumo(store, run_id, costo)
         iteracion = estado["iteracion"] + 1
+
+        # ADR-017: se deposita, se relee para comprobar el hash, y recién
+        # entonces se appendea. Si acá se corta, quedan archivos sin evento —que
+        # el reintento sobrescribe con lo mismo— y no un evento afirmando una
+        # entrega que no existe, que el registro inmutable no podría corregir.
+        destino = deposito.ruta_de_iteracion(
+            operational_state.DIR_ESTADO / "entregas", run_id, iteracion
+        )
+        registrada = deposito.depositar(entrega, destino)
         store.append(
             run_id,
             "entrega_producida",
             AGENTE,
-            {"iteracion": iteracion, "unidad": estado["unidad"]["id"], "entrega": entrega},
+            {
+                "iteracion": iteracion,
+                "unidad": estado["unidad"]["id"],
+                "deposito": relativa_a(destino, operational_state.DIR_ESTADO),
+                "entrega": registrada,
+            },
         )
         return {"entrega": entrega, "iteracion": iteracion, "incumplimientos": []}
 
