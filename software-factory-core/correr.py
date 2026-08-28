@@ -377,17 +377,22 @@ def developer_para_reanudar(store, run_id, declarada):
 
 
 def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, conservar, modo):
-    """Devuelve `(ejecutar_unidades_fn, borrar_trabajo_fn)`, o `(None, None)`.
+    """Devuelve `(ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn)`.
 
-    Sin definición de Developer no hay cadena: la corrida cierra con el plan
-    verificado, que es el Requirement Agent corriendo solo.
+    Los tres son `None` si no hay definición de Developer: sin cadena la corrida
+    cierra con el plan verificado, que es el Requirement Agent corriendo solo, y
+    no hay entrega que materializar.
+
+    **`materializar_fn` no depende de `--conservar-trabajo`.** Ese flag decide si
+    se descarta la copia de trabajo, no si queda evidencia: por ADR-015 toda
+    corrida aprobada la deja.
 
     El modo de la cadena es el mismo que el del plan y no se elige por separado:
     una corrida no produce el plan contra el modelo y el código con el stub, ni
     al revés. Es un solo hecho de la corrida.
     """
     if not ruta_definicion_developer:
-        return None, None
+        return None, None, None
     definicion = cargar(ruta_definicion_developer)
     producir_entrega_fn, costo = elegir_productor_de_entregas(modo, ruta_vault)
     nodo = cadena.nodo_ejecutar_unidades(
@@ -398,7 +403,11 @@ def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, con
         ruta_vault,
         costo,
     )
-    return nodo, (None if conservar else cadena.borrar_directorio)
+    return (
+        nodo,
+        (None if conservar else cadena.borrar_directorio),
+        cadena.materializar_evidencia,
+    )
 
 
 def modo_declarado(args):
@@ -582,7 +591,7 @@ def main(argv=None):
                     _, nombre_modelo = _credencial_y_modelo()
             else:
                 producir_fn, costo, nombre_modelo = elegir_productor(modo, args.vault)
-            ejecutar_unidades_fn, borrar_trabajo_fn = armar_cadena(
+            ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn = armar_cadena(
                 store, ruta_developer, args.trabajo, args.vault,
                 args.conservar_trabajo, modo,
             )
@@ -603,7 +612,7 @@ def main(argv=None):
         if args.reanudar:
             estado = grafo.reanudar(
                 args.reanudar, store, checkpointer, producir_fn, args.vault, costo,
-                ejecutar_unidades_fn, borrar_trabajo_fn,
+                ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn,
             )
             print("corrida %s: %s" % (args.reanudar, estado.get("resultado") or "en curso"))
             return 0
@@ -635,6 +644,7 @@ def main(argv=None):
                 args.vault,
                 modo=modo,
                 modelo=nombre_modelo,
+                materializar_fn=materializar_fn,
             )
             store.append(
                 run_id,
@@ -667,6 +677,7 @@ def main(argv=None):
             modelo=nombre_modelo,
             ejecutar_unidades_fn=ejecutar_unidades_fn,
             borrar_trabajo_fn=borrar_trabajo_fn,
+            materializar_fn=materializar_fn,
         )
         # Se registra al volver, no antes: el run_id nace dentro de ejecutar. Una
         # corrida nueva siempre frena en el Gate de entrada, así que el hecho

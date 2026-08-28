@@ -2,7 +2,7 @@
 tipo: adr
 estado: aceptado
 aprobado: 2026-08-28
-version: 1.0
+version: 1.1
 owner: CEO
 actualizado: 2026-08-28
 adr: [ADR-004, ADR-005, ADR-011, ADR-013]
@@ -121,14 +121,32 @@ que es la misma.
 Esta parte vale por sí sola, con área de entregas o sin ella. Es la que convierte
 la firma en una firma sobre algo.
 
-### 3. El trabajo de corridas rechazadas o abandonadas se sigue borrando
+### 3. Sólo se borra el trabajo de una corrida aprobada
 
-La separación es **por estado, no por antigüedad**. Una corrida que no llegó a
-aprobarse no deja evidencia de entrega, porque no hubo entrega.
+La separación es **por estado, no por antigüedad**, y corta en los dos sentidos.
+Una corrida que no llegó a aprobarse no deja evidencia de entrega, porque no hubo
+entrega; y tampoco pierde su directorio de trabajo, porque el borrado cuelga de
+la aprobación.
 
-Y lo que el borrado descarta —también en el caso aprobado— es **la copia de
-trabajo, no la evidencia**: los eventos la conservan igual. Por eso borrar sigue
-siendo seguro y sigue siendo lo correcto.
+Que el trabajo rechazado quede es lo correcto, no un descuido. **Es lo que
+permite entender por qué se rechazó.** El evento de rechazo lleva un motivo; el
+directorio lleva el código sobre el que ese motivo se pronunció, y sin los dos el
+rechazo es una opinión sin objeto —el mismo defecto que el punto 2 le corrige a
+la aprobación—. Borrarlo destruiría la evidencia del fallo, que es justamente la
+que sirve para no repetirlo. Una corrida abandonada corre la misma suerte por el
+mismo mecanismo: sin Gate de salida resuelto no hay borrado.
+
+Y lo que el borrado descarta, en el caso aprobado, es **la copia de trabajo, no
+la evidencia**: los eventos la conservan igual y desde este ADR además está
+materializada. Por eso ahí borrar sí es seguro.
+
+> **Corrección contra el código.** La redacción original de este punto decía que
+> el trabajo de las corridas rechazadas o abandonadas "se sigue borrando", y
+> describía un comportamiento que no existe: el borrado siempre estuvo
+> condicionado a que el Gate de salida se resolviera aprobando —`_nodo_fin`, en
+> `grafo.py`—. Se detectó al implementar el ADR y se corrigió el ADR contra el
+> código, no al revés. Un documento que manda destruir algo tiene que decir lo
+> que el sistema hace, porque alguien lo va a leer como una orden.
 
 ## Consecuencias
 

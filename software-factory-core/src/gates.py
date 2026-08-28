@@ -67,11 +67,42 @@ def abrir(store, run_id, gate, somete):
     store.append(run_id, "gate_abierto", "plataforma", {"gate": gate, "somete": somete})
 
 
+def _firmado_de(somete):
+    """Los hashes de lo sometido, para repetirlos en la resolución. ADR-015 punto 2.
+
+    **Se leen del `gate_abierto`, no se recalculan.** Es la diferencia entre
+    firmar lo que se vio y firmar lo que hay ahora: si se recalcularan, un cambio
+    entre la apertura y la resolución quedaría firmado sin que nadie lo note, que
+    es exactamente lo que el hash existe para impedir.
+
+    Devuelve una lista vacía cuando lo sometido no lleva archivos —el Gate de
+    entrada somete el pedido, no una entrega—, y `resolver` la omite del payload.
+    """
+    if not isinstance(somete, dict):
+        return []
+    firmado = []
+    for unidad in somete.get("unidades") or []:
+        archivos = [
+            {"ruta": a["ruta"], "sha256": a["sha256"]}
+            for a in unidad.get("archivos") or []
+            if isinstance(a, dict) and "sha256" in a
+        ]
+        if archivos:
+            firmado.append({"unidad": unidad.get("unidad"), "archivos": archivos})
+    return firmado
+
+
 def resolver(store, run_id, gate, decision, motivo=None):
     """Registra la decisión humana sobre un Gate abierto.
 
     El actor es siempre el CEO. `motivo` es obligatorio si rechaza: un rechazo
     sin motivo no le sirve a nadie.
+
+    Si lo sometido llevaba hashes, la resolución los repite: una aprobación que
+    no nombra un objeto no es evidencia de nada. Se copian del evento de apertura
+    porque `resolver` corre desde el CLI, en otro proceso que el grafo, y no tiene
+    el estado a mano —y porque el evento es la única fuente que no puede diverger
+    de lo que la persona miró—.
     """
     _validar_nombre(gate)
 
@@ -100,6 +131,9 @@ def resolver(store, run_id, gate, decision, motivo=None):
     payload = {"gate": gate, "decision": decision}
     if isinstance(motivo, str) and motivo.strip():
         payload["motivo"] = motivo
+    firmado = _firmado_de(abiertos[-1]["payload"].get("somete"))
+    if firmado:
+        payload["firmado"] = firmado
     store.append(run_id, "gate_resuelto", ACTOR, payload)
 
 

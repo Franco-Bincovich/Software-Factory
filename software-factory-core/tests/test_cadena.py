@@ -261,21 +261,23 @@ class BaseCadena(unittest.TestCase):
             modo=grafo.MODO_STUB,
             ejecutar_unidades_fn=self.nodo(developer, costo),
             borrar_trabajo_fn=borrar,
+            materializar_fn=cadena.materializar_evidencia,
         )
         gates.resolver(self.store, run, "entrada", "aprobado")
         estado = grafo.reanudar(
             run, self.store, self.checkpointer, productor_de(plan), None, costo,
-            self.nodo(developer, costo), borrar,
+            self.nodo(developer, costo), borrar, cadena.materializar_evidencia,
         )
         return run, plan, estado
 
     def cerrar_con_gate(self, run, plan, developer=producir_entrega_stub,
-                        costo=0.0, conservar=False):
+                        costo=0.0, conservar=False, decision="aprobado",
+                        motivo=None, materializar=cadena.materializar_evidencia):
         borrar = None if conservar else cadena.borrar_directorio
-        gates.resolver(self.store, run, "salida", "aprobado")
+        gates.resolver(self.store, run, "salida", decision, motivo)
         return grafo.reanudar(
             run, self.store, self.checkpointer, productor_de(plan), None, costo,
-            self.nodo(developer, costo), borrar,
+            self.nodo(developer, costo), borrar, materializar,
         )
 
 
@@ -751,6 +753,176 @@ class ReanudarConDirectorioRelativo(BaseCadena):
             paquetes[0][1]["ya_depositado"],
             ["U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html"],
         )
+
+
+# --- 7e — la evidencia de entrega (ADR-015) ---------------------------------
+
+
+class MaterializacionRota(RuntimeError):
+    """Una falla cualquiera al escribir la evidencia. El motivo no importa acá."""
+
+
+def materializar_que_falla(store, run_pedido):
+    raise MaterializacionRota("no se pudo escribir la evidencia")
+
+
+class EvidenciaDeEntrega(BaseCadena):
+    """ADR-015: una corrida aprobada deja sus archivos abribles, no reconstruibles.
+
+    La evidencia nunca se perdió —los eventos `entrega_producida` llevan el
+    contenido completo—, pero recuperarla exigía correr un script. Lo que falta
+    es la evidencia **materializada**: una carpeta que se abre y se le entrega a
+    un tercero sin intermediar código.
+    """
+
+    def entregas_de(self, run):
+        return cadena.raiz_entregas() / run
+
+    def test_la_corrida_aprobada_deja_su_entrega_en_el_area_de_entregas(self):
+        run, plan, _ = self.correr_cadena(TRES_UNIDADES)
+        self.cerrar_con_gate(run, plan)
+
+        area = self.entregas_de(run)
+        self.assertTrue(area.is_dir())
+        # Hermana de `trabajo/`, bajo el mismo directorio de estado.
+        self.assertEqual(area.parent.parent, Path(operational_state.DIR_ESTADO))
+
+        # Y lo escrito es exactamente lo que dice el evento, byte a byte. La
+        # fuente es el registro y no el directorio de trabajo: por eso el área
+        # es derivable, y por eso si alguna vez discrepara gana el evento.
+        entregadas = self.de_tipo(run, "unidad_entregada")
+        self.assertEqual([e["payload"]["unidad"] for e in entregadas], ["U1", "U3", "U2"])
+        for evento in entregadas:
+            uid = evento["payload"]["unidad"]
+            entrega = cadena.entrega_de(self.store, evento["payload"]["run_developer"])
+            for archivo in entrega["archivos"]:
+                destino = area / uid / archivo["ruta"]
+                self.assertTrue(destino.is_file(), "falta %s/%s" % (uid, archivo["ruta"]))
+                self.assertEqual(
+                    destino.read_text(encoding="utf-8"), archivo["contenido"]
+                )
+
+        # El subdirectorio por unidad se conserva: sin él los nombres fijos del
+        # contrato se pisarían entre unidades, igual que en el área de trabajo.
+        for uid in ("U1", "U2", "U3"):
+            self.assertTrue((area / uid / "pruebas.html").is_file())
+            self.assertTrue((area / uid / "demo.html").is_file())
+
+        (materializada,) = self.de_tipo(run, "evidencia_materializada")
+        self.assertFalse(Path(materializada["payload"]["ruta"]).is_absolute())
+        self.assertEqual(
+            [u["unidad"] for u in materializada["payload"]["unidades"]],
+            ["U1", "U2", "U3"],
+        )
+
+    def test_el_gate_firma_los_hashes_que_se_le_sometieron(self):
+        """Se firma sobre lo que se vio: los hashes salen del `gate_abierto`."""
+        run, plan, _ = self.correr_cadena(TRES_UNIDADES)
+
+        somete = self.de_tipo(run, "gate_abierto")[1]["payload"]["somete"]
+        sometidos = [
+            {"unidad": u["unidad"], "archivos": u["archivos"]} for u in somete["unidades"]
+        ]
+        # Lo sometido lleva hash por archivo. Sin eso se firma una lista de
+        # nombres, y "aprobado" no identifica qué se aprobó.
+        for unidad in somete["unidades"]:
+            self.assertTrue(unidad["archivos"])
+            for archivo in unidad["archivos"]:
+                self.assertEqual(sorted(archivo), ["ruta", "sha256"])
+                self.assertEqual(len(archivo["sha256"]), 64)
+
+        self.cerrar_con_gate(run, plan)
+        (resuelto,) = [
+            e for e in self.de_tipo(run, "gate_resuelto")
+            if e["payload"]["gate"] == "salida"
+        ]
+        self.assertEqual(resuelto["payload"]["firmado"], sometidos)
+
+        # Y el hash firmado es el del archivo que quedó en el área de entregas.
+        area = self.entregas_de(run)
+        for unidad in somete["unidades"]:
+            for archivo in unidad["archivos"]:
+                contenido = (area / unidad["unidad"] / archivo["ruta"]).read_text(
+                    encoding="utf-8"
+                )
+                self.assertEqual(cadena.sha256_de(contenido), archivo["sha256"])
+
+    def test_el_gate_de_entrada_no_firma_nada_porque_no_somete_archivos(self):
+        run, _, _ = self.correr_cadena()
+        (entrada,) = [
+            e for e in self.de_tipo(run, "gate_resuelto")
+            if e["payload"]["gate"] == "entrada"
+        ]
+        self.assertNotIn("firmado", entrada["payload"])
+
+    def test_se_borra_el_trabajo_y_no_la_evidencia(self):
+        run, plan, _ = self.correr_cadena()
+        trabajo = self.ruta_de_trabajo(run)
+        self.cerrar_con_gate(run, plan)
+
+        self.assertFalse(trabajo.exists())
+        self.assertTrue(self.entregas_de(run).is_dir())
+        # La separación es por estado, no por antigüedad: lo que se descarta es
+        # la copia de trabajo, y la evidencia sobrevive en su propia área.
+        self.assertEqual(len(self.de_tipo(run, "directorio_borrado")), 1)
+
+    def test_conservar_el_trabajo_no_impide_materializar(self):
+        """`--conservar-trabajo` decide si se descarta la copia, no si hay evidencia."""
+        run, plan, _ = self.correr_cadena(conservar=True)
+        trabajo = self.ruta_de_trabajo(run)
+        self.cerrar_con_gate(run, plan, conservar=True)
+
+        self.assertTrue(trabajo.exists())
+        self.assertTrue(self.entregas_de(run).is_dir())
+
+    def test_si_falla_la_materializacion_no_se_borra_nada_ni_cierra_la_corrida(self):
+        """El orden de ADR-015 punto 3 tiene que ser comprobable, no confiable.
+
+        Si se borrara primero y materializar fallara después, la corrida quedaría
+        sin copia de trabajo y sin evidencia. Por eso materializar va antes y
+        cualquier falla suya detiene el cierre.
+        """
+        run, plan, _ = self.correr_cadena()
+        trabajo = self.ruta_de_trabajo(run)
+
+        with self.assertRaises(MaterializacionRota):
+            self.cerrar_con_gate(run, plan, materializar=materializar_que_falla)
+
+        self.assertTrue(trabajo.exists())
+        self.assertEqual(self.de_tipo(run, "directorio_borrado"), [])
+        self.assertEqual(self.de_tipo(run, "evidencia_materializada"), [])
+        # No cierra: un "entregado" sin evidencia sería una afirmación sin objeto.
+        self.assertEqual(self.de_tipo(run, "run_cerrada"), [])
+
+    def test_una_unidad_entregada_sin_entrega_registrada_no_materializa_a_medias(self):
+        """La falla real que el caso anterior simula, con su causa concreta."""
+        run, _, _ = self.correr_cadena()
+        self.store.append(
+            run, "unidad_entregada", "plataforma",
+            {"unidad": "UX", "run_developer": self.store.nuevo_run_id()},
+        )
+        with self.assertRaises(cadena.EvidenciaIncompleta):
+            cadena.materializar_evidencia(self.store, run)
+        self.assertEqual(self.de_tipo(run, "evidencia_materializada"), [])
+
+    def test_la_corrida_rechazada_no_materializa_nada(self):
+        """No hubo entrega: no hay evidencia de entrega. Y el trabajo queda."""
+        run, plan, _ = self.correr_cadena()
+        trabajo = self.ruta_de_trabajo(run)
+        self.cerrar_con_gate(run, plan, decision="rechazado", motivo="no sirve")
+
+        self.assertFalse(self.entregas_de(run).exists())
+        self.assertEqual(self.de_tipo(run, "evidencia_materializada"), [])
+        # El directorio es justamente lo que hay que mirar tras un rechazo.
+        self.assertTrue(trabajo.exists())
+        self.assertEqual(self.de_tipo(run, "directorio_borrado"), [])
+
+    def test_la_corrida_que_escala_no_materializa_nada(self):
+        run, _, _ = self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_falla_en("U3")
+        )
+        self.assertFalse(self.entregas_de(run).exists())
+        self.assertEqual(self.de_tipo(run, "evidencia_materializada"), [])
 
 
 # --- 8 — orden topológico ---------------------------------------------------

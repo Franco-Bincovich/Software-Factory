@@ -511,13 +511,18 @@ def _nodo_escalar(store):
     return nodo
 
 
-def _nodo_fin(store, borrar_trabajo_fn=None):
+def _nodo_fin(store, borrar_trabajo_fn=None, materializar_fn=None):
     """Cierra la corrida. Toda corrida termina acá, se haya entregado o no.
 
-    Es también donde se descarta el directorio de trabajo, y **solo si el Gate de
-    salida se resolvió aprobando**. Nunca antes: mientras el Gate esté pendiente,
-    o si la corrida escaló o fue rechazada, el directorio es justamente lo que la
-    persona necesita mirar.
+    Es también donde se materializa la evidencia y se descarta el directorio de
+    trabajo, y **solo si el Gate de salida se resolvió aprobando**. Nunca antes:
+    mientras el Gate esté pendiente, o si la corrida escaló o fue rechazada, el
+    directorio es justamente lo que la persona necesita mirar.
+
+    El orden es fijo, por ADR-015 punto 3: primero se escribe la evidencia y
+    después se borra el trabajo. Si materializar falla, levanta antes de borrar
+    nada y la corrida no cierra: una corrida que quedó abierta se reanuda, pero
+    un "entregado" sin evidencia materializada es una afirmación sin objeto.
     """
 
     def nodo(estado):
@@ -529,9 +534,14 @@ def _nodo_fin(store, borrar_trabajo_fn=None):
         # contradice, lo último que hay que hacer es destruir lo que quedó.
         verificar_regimen(store, run_id, resultado)
 
-        if borrar_trabajo_fn is not None and estado.get("directorio"):
-            decision = gates.resolucion(store, run_id, "salida")
-            if decision is not None and decision["decision"] == "aprobado":
+        decision = gates.resolucion(store, run_id, "salida")
+        if decision is not None and decision["decision"] == "aprobado":
+            # Materializar no depende de que se borre. Con `--conservar-trabajo`
+            # no hay `borrar_trabajo_fn` y la evidencia se escribe igual: son dos
+            # áreas distintas y una corrida aprobada deja la suya en las dos.
+            if materializar_fn is not None:
+                materializar_fn(store, run_id)
+            if borrar_trabajo_fn is not None and estado.get("directorio"):
                 borrar_trabajo_fn(store, run_id, estado["directorio"])
 
         store.append(
@@ -621,7 +631,8 @@ def _tras_verificar(estado):
 
 def crear_grafo(
     producir_fn, store, checkpointer, ruta_vault=None, costo_iteracion=0.0,
-    ejecutar_unidades_fn=None, borrar_trabajo_fn=None, heredado=False,
+    ejecutar_unidades_fn=None, borrar_trabajo_fn=None, materializar_fn=None,
+    heredado=False,
 ):
     """Devuelve el grafo compilado. Nodos y aristas declarados a mano.
 
@@ -631,6 +642,10 @@ def crear_grafo(
     `ejecutar_unidades_fn` es el coordinador de la cadena. Se inyecta con el
     mismo criterio que `producir_fn`: este módulo ordena la corrida y no sabe qué
     es un Developer. Sin él, la corrida cierra con el plan verificado.
+
+    `materializar_fn` se inyecta por lo mismo y además por una razón dura: quien
+    sabe reconstruir la evidencia es el coordinador de la cadena, y ese módulo
+    importa a éste. Inyectarla es lo que evita el import circular.
 
     `heredado` cambia **una sola arista**: la corrida que trae el plan de otra no
     pasa por la fase Requirement, va del Gate de entrada directo a ejecutar las
@@ -654,7 +669,7 @@ def crear_grafo(
     )
     grafo.add_node("gate_salida", _nodo_gate(store, "salida", _somete_salida))
     grafo.add_node("escalar", _nodo_escalar(store))
-    grafo.add_node("fin", _nodo_fin(store, borrar_trabajo_fn))
+    grafo.add_node("fin", _nodo_fin(store, borrar_trabajo_fn, materializar_fn))
 
     grafo.add_edge(START, "gate_entrada")
     grafo.add_conditional_edges(
@@ -708,6 +723,7 @@ def ejecutar(
     modelo=None,
     ejecutar_unidades_fn=None,
     borrar_trabajo_fn=None,
+    materializar_fn=None,
 ):
     """Corre la fase previa y lanza el grafo. Devuelve el `run_id`.
 
@@ -770,7 +786,7 @@ def ejecutar(
 
     grafo = crear_grafo(
         producir_fn, store, checkpointer, ruta_vault, costo_iteracion,
-        ejecutar_unidades_fn, borrar_trabajo_fn,
+        ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn,
     )
     grafo.invoke(estado, _config(run_id))
     return run_id
@@ -798,6 +814,7 @@ def ejecutar_heredado(
     *,
     modo,
     modelo=None,
+    materializar_fn=None,
 ):
     """Abre una corrida que ejecuta un plan ya verificado en otra corrida.
 
@@ -860,7 +877,7 @@ def ejecutar_heredado(
 
     compilado = crear_grafo(
         None, store, checkpointer, ruta_vault, 0.0,
-        ejecutar_unidades_fn, borrar_trabajo_fn, heredado=True,
+        ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn, heredado=True,
     )
     compilado.invoke(estado, _config(run_id))
     return run_id
@@ -882,7 +899,7 @@ def modo_de(store, run_id):
 
 def reanudar(
     run_id, store, checkpointer, producir_fn, ruta_vault=None, costo_iteracion=0.0,
-    ejecutar_unidades_fn=None, borrar_trabajo_fn=None,
+    ejecutar_unidades_fn=None, borrar_trabajo_fn=None, materializar_fn=None,
 ):
     """Retoma una corrida. Devuelve el estado final del grafo.
 
@@ -893,7 +910,8 @@ def reanudar(
     """
     grafo = crear_grafo(
         producir_fn, store, checkpointer, ruta_vault, costo_iteracion,
-        ejecutar_unidades_fn, borrar_trabajo_fn, es_heredada(store, run_id),
+        ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn,
+        heredado=es_heredada(store, run_id),
     )
     config = _config(run_id)
 

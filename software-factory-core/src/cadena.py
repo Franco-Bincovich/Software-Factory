@@ -23,6 +23,7 @@ Operational State es de escritor único y la arquitectura declara un proyecto po
 vez; paralelizar es V0.4.
 """
 
+import hashlib
 import shutil
 from pathlib import Path
 
@@ -51,6 +52,20 @@ def _base():
     comprobar de verdad que un evento no lleva rutas de la máquina—.
     """
     return operational_state.DIR_ESTADO
+
+
+def raiz_entregas():
+    """El área de entregas, hermana de `trabajo/` bajo el directorio de estado.
+
+    No introduce configuración nueva: se deriva del mismo ancla que todo lo demás,
+    y se calcula tarde por la misma razón que `_base()` —para que los tests puedan
+    apuntarla a su tmpdir y comprobar de verdad dónde aterriza la evidencia—.
+
+    Son dos áreas y no una a propósito. `trabajo/` es descartable y se borra;
+    `entregas/` es evidencia y sobrevive. Mezclarlas obligaría a decidir archivo
+    por archivo qué se conserva, que es exactamente lo que ADR-015 no quiere.
+    """
+    return _base() / "entregas"
 
 
 class CicloDeDependencias(RuntimeError):
@@ -238,13 +253,67 @@ def escribir_entrega(directorio, entrega):
     return escritos
 
 
+def sha256_de(contenido):
+    """El hash del archivo tal como el evento lo registra.
+
+    Se calcula sobre el texto codificado en UTF-8, que es exactamente lo que
+    `escribir_entrega` deposita en disco. Si se calculara sobre otra cosa, el hash
+    firmado en el Gate no serviría para comprobar el archivo materializado.
+    """
+    return hashlib.sha256(contenido.encode("utf-8")).hexdigest()
+
+
+class EvidenciaIncompleta(RuntimeError):
+    """Una unidad consta como entregada pero su entrega no está en el registro.
+
+    No se materializa una entrega a medias ni se cierra la corrida: es la
+    situación exacta en la que "entregado" sería una afirmación sin objeto.
+    """
+
+
+def materializar_evidencia(store, run_pedido, raiz=None):
+    """Escribe la evidencia de una corrida aprobada. ADR-015 punto 1.
+
+    **La fuente son los eventos, no el directorio de trabajo.** No es una copia
+    antes de borrar: es una reconstrucción del registro. Por eso el área de
+    entregas es derivable —si se pierde, se regenera— y por eso, si alguna vez
+    discrepara con los eventos, gana el evento (ADR-011).
+
+    Conserva el subdirectorio por unidad, por la misma razón que lo conserva el
+    área de trabajo: los nombres del contrato son iguales para toda unidad y sin
+    la carpeta se pisarían entre sí.
+    """
+    destino = Path(raiz) if raiz is not None else raiz_entregas() / run_pedido
+    materializadas = []
+    for uid, run_developer in sorted(unidades_entregadas(store, run_pedido).items()):
+        entrega = entrega_de(store, run_developer)
+        if entrega is None:
+            raise EvidenciaIncompleta(
+                "la unidad %s de la corrida %s consta entregada por la corrida %s, "
+                "pero esa corrida no registró ninguna entrega."
+                % (uid, run_pedido, run_developer)
+            )
+        escritos = escribir_entrega(directorio_de_unidad(destino, uid), entrega)
+        materializadas.append({"unidad": uid, "archivos": escritos})
+
+    store.append(
+        run_pedido,
+        "evidencia_materializada",
+        PLATAFORMA,
+        {"ruta": relativa_a(destino, _base()), "unidades": materializadas},
+    )
+    return str(destino)
+
+
 def borrar_directorio(store, run_pedido, ruta):
     """Se borra **después** de que el Gate de salida se resolvió, nunca antes.
 
-    Borrarlo no pierde nada: la entrega registrada en el Operational State lleva
-    el contenido completo de cada archivo. Lo que se descarta es la copia de
-    trabajo. Queda registrado con su ruta, que es el ítem 8 de evidencia de la
-    Agent Definition: sin eso, después nadie puede saber qué se descartó.
+    Y después de materializar la evidencia, por ADR-015 punto 3. Borrarlo no
+    pierde nada: la entrega registrada en el Operational State lleva el contenido
+    completo de cada archivo, y desde ADR-015 además quedó escrita en el área de
+    entregas. Lo que se descarta es la copia de trabajo. Queda registrado con su
+    ruta, que es el ítem 8 de evidencia de la Agent Definition: sin eso, después
+    nadie puede saber qué se descartó.
     """
     if ruta and Path(ruta).exists():
         shutil.rmtree(ruta)
@@ -550,16 +619,25 @@ def nodo_ejecutar_unidades(
 def _resumen(entregas_por_unidad, hechas):
     """Lo que se somete en el Gate de salida: qué unidad, qué corrida, qué archivos.
 
-    El contenido completo de cada archivo no va acá: ya está en el Operational
-    State, y el Gate se resuelve abriendo los dos HTML del directorio de trabajo,
-    no leyendo JSON en una terminal.
+    Cada archivo va con su **SHA-256**, por ADR-015 punto 2. El hash tiene que
+    estar en lo que se somete y no sólo en lo que se resuelve: se firma sobre lo
+    que se vio. Sin él, "aprobado" no identifica qué se aprobó y una modificación
+    posterior del área de entregas sería indetectable.
+
+    El contenido completo de cada archivo sigue sin ir acá: ya está en el
+    Operational State, y el Gate se resuelve abriendo los dos HTML, no leyendo
+    JSON en una terminal. El hash es corto y sirve para comprobar; el contenido
+    volvería ilegible lo que una persona tiene que mirar.
     """
     return [
         {
             "unidad": uid,
             "run_developer": hechas[uid],
             "subdirectorio": uid,
-            "archivos": [a["ruta"] for a in (entregas_por_unidad.get(uid) or {}).get("archivos", [])],
+            "archivos": [
+                {"ruta": a["ruta"], "sha256": sha256_de(a["contenido"])}
+                for a in (entregas_por_unidad.get(uid) or {}).get("archivos", [])
+            ],
         }
         for uid in sorted(hechas)
     ]
@@ -625,6 +703,7 @@ def _correr_unidad(
 
 __all__ = [
     "CicloDeDependencias",
+    "EvidenciaIncompleta",
     "PlanNoHeredable",
     "PlanYaEjecutado",
     "SinPresupuestoHeredado",
@@ -638,9 +717,12 @@ __all__ = [
     "directorio_registrado",
     "entrega_de",
     "escribir_entrega",
+    "materializar_evidencia",
     "nodo_ejecutar_unidades",
     "orden_topologico",
     "preparar_herencia",
+    "raiz_entregas",
+    "sha256_de",
     "techo_heredado",
     "unidades_entregadas",
     "ya_depositado",
