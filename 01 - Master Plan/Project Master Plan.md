@@ -28,7 +28,7 @@ existen como archivo.
 Criterio de cierre según [[PLAN-V0.1]]: capacidad operativa demostrada,
 no cantidad de documentos aprobados.
 
-ADRs aprobados: 17 (ADR-000 a ADR-006, ADR-008 a ADR-017).
+ADRs aprobados: 18 (ADR-000 a ADR-006, ADR-008 a ADR-018).
 
 **Bloque B de V0.1 cerrado el 2026-08-11**, T14 incluido: el armazón de
 ejecución corre de punta a punta. Fase siguiente: Bloque C —T15 primera corrida
@@ -110,6 +110,7 @@ decide si V0.1 terminó según [[PLAN-V0.1]].
 | [[ADR-015]] | adr | aceptado |
 | [[ADR-016]] | adr | aceptado |
 | [[ADR-017]] | adr | aceptado |
+| [[ADR-018]] | adr | aceptado |
 | [[Contrato del Plan de Trabajo]] | contrato | aceptado |
 | [[Contrato de Entrega del Developer]] | contrato | aceptado |
 | [[Requirement Agent]] | agent-definition | aceptado |
