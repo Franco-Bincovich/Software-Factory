@@ -2,7 +2,7 @@
 tipo: adr
 estado: aceptado
 aprobado: 2026-08-28
-version: 1.0
+version: 1.1
 owner: CEO
 actualizado: 2026-08-28
 adr: [ADR-001, ADR-006, ADR-011, ADR-013, ADR-015]
@@ -134,6 +134,48 @@ De ahí se sigue una obligación concreta para el código que lea el registro:
 **tiene que tolerar las dos formas de `entrega_producida`**, y distinguirlas por
 presencia de campo, no por fecha. Un lector que asuma una sola forma rompe contra
 el registro histórico, que es exactamente lo que el punto 2 promete preservar.
+
+### 5. Se deposita **cada iteración**, no sólo la aceptada
+
+Este punto se agrega al implementar. El ADR no lo había contemplado y no es un
+detalle de implementación: decide qué evidencia sobrevive.
+
+**El hallazgo.** Una iteración rechazada existía hasta acá únicamente adentro de
+su evento. `escribir_entrega` sobre el área de trabajo corre recién cuando la
+unidad sale entregada, así que lo que el verificador rechazó **nunca tocaba el
+disco**. Mientras el evento llevaba el contenido eso no se notaba, porque el
+evento alcanzaba. Sacándole el contenido al evento y depositando sólo lo
+aceptado, ese código desaparecería del todo: sería la única pérdida real de
+información de este cambio, y silenciosa.
+
+En el registro hay hoy una sola iteración rechazada, y está medida contra
+`factory.db` el 2026-08-28:
+
+| Medición | Valor |
+|---|---|
+| Corrida | `cc2b9cf8`, unidad U2, iteración 1 |
+| Veredicto | `verificacion_ejecutada` con `valido: false` |
+| Payload del evento | **6.038 bytes**, de los cuales 4.335 son contenido de archivos |
+| Dónde vive ese contenido hoy | Únicamente adentro de ese evento |
+
+**La decisión.** Cada iteración deposita su contenido en
+`entregas/<run_developer>/<iteracion>/`, rechazada o no.
+
+El motivo es que ADR-015 punto 3 ya conserva el trabajo rechazado **por diseño**
+—sólo se borra el directorio de una corrida aprobada, porque lo que se rechazó es
+justamente lo que hay que poder mirar para entender por qué—. Depositar sólo lo
+aceptado contradiría esa decisión por la puerta de atrás, sin discutirla.
+
+Y no reintroduce el problema que este ADR combate. **El escalamiento que acá se
+ataca es el del registro, no el del depósito.** El registro tiene que crecer con
+la cantidad de hechos porque se consulta, se respalda transaccionalmente y
+arrastra las propiedades que ADR-011 punto 2 le exige sobre cada byte. El
+depósito es de escritura única y no paga nada de eso: que ocupe una carpeta por
+iteración es exactamente lo que se esperaba de él.
+
+Por corrida de Developer y no por unidad porque el `run_id` ya es único por
+unidad, y colgar de él deja el rastro completo de una unidad —sus intentos y su
+entrega— junto en un solo lugar.
 
 ## Consecuencias
 

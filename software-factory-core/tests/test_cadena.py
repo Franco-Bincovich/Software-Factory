@@ -20,8 +20,10 @@ sys.path.insert(0, str(RAIZ / "src"))
 sys.path.insert(0, str(RAIZ))
 
 import cadena  # noqa: E402
+import deposito  # noqa: E402
 import gates  # noqa: E402
 import grafo  # noqa: E402
+import grafo_developer  # noqa: E402
 from grafo import UnidadAmbigua  # noqa: E402
 import operational_state  # noqa: E402
 import presupuesto  # noqa: E402
@@ -391,9 +393,15 @@ class ReintentoTrasRechazo(BaseCadena):
         self.assertIn("C6", {i["regla"] for i in registro[1]["incumplimientos"]})
 
         # Corrigió: los archivos que ya estaban llegaron intactos a la segunda.
+        # El contenido de la segunda sale del depósito y no del evento, que desde
+        # ADR-017 sólo lleva el hash. Se compara por contenido igual: lo que este
+        # test cuida es que corrija en vez de regenerar.
         primeros = {a["ruta"]: a["contenido"] for a in registro[1]["entrega_anterior"]["archivos"]}
         producidas = self.de_tipo(run_developer, "entrega_producida")
-        segundos = {a["ruta"]: a["contenido"] for a in producidas[1]["payload"]["entrega"]["archivos"]}
+        segunda = deposito.entrega_del_evento(
+            producidas[1]["payload"], Path(operational_state.DIR_ESTADO)
+        )
+        segundos = {a["ruta"]: a["contenido"] for a in segunda["archivos"]}
         self.assertTrue(set(primeros).issubset(segundos))
         for ruta, contenido in primeros.items():
             self.assertEqual(segundos[ruta], contenido, "regeneró %s en vez de corregir" % ruta)
@@ -923,6 +931,243 @@ class EvidenciaDeEntrega(BaseCadena):
         )
         self.assertFalse(self.entregas_de(run).exists())
         self.assertEqual(self.de_tipo(run, "evidencia_materializada"), [])
+
+
+# --- 7f — el registro no lleva el contenido; el depósito sí (ADR-017) --------
+
+
+class CorteAlRegistrar(RuntimeError):
+    """El proceso muere entre depositar la entrega y appendear su evento."""
+
+
+class StoreQueSeCortaAlRegistrarLaEntrega:
+    """Delega todo en el store real menos el `append` que este test intercepta.
+
+    Es la única forma de mirar el orden desde afuera: entre depositar y
+    registrar no hay ningún punto de observación, así que el corte se simula.
+    """
+
+    def __init__(self, real):
+        self._real = real
+
+    def __getattr__(self, nombre):
+        return getattr(self._real, nombre)
+
+    def append(self, run_id, tipo, actor, payload):
+        if tipo == "entrega_producida":
+            raise CorteAlRegistrar("corte entre depositar y registrar")
+        return self._real.append(run_id, tipo, actor, payload)
+
+
+class DepositoDeArtefactos(BaseCadena):
+    """ADR-017: el evento registra ruta, rol y hash; el contenido vive aparte.
+
+    Hasta acá el `entrega_producida` llevaba adentro cada archivo entero, y el
+    registro crecía con el tamaño de lo producido en vez de con la cantidad de
+    hechos. Lo que ata las dos mitades es el SHA-256: el evento sigue
+    identificando sin ambigüedad qué se entregó aunque ya no lo contenga.
+    """
+
+    def deposito_de(self, run_developer, iteracion):
+        return cadena.raiz_entregas() / run_developer / str(iteracion)
+
+    def run_developer_de(self, run, unidad="U1"):
+        (lanzada,) = [
+            e for e in self.de_tipo(run, "unidad_lanzada")
+            if e["payload"]["unidad"] == unidad
+        ]
+        return lanzada["payload"]["run_developer"]
+
+    def test_el_evento_registra_el_hash_de_cada_archivo_y_no_su_contenido(self):
+        run, _, _ = self.correr_cadena()
+        run_developer = self.run_developer_de(run)
+
+        (producida,) = self.de_tipo(run_developer, "entrega_producida")
+        payload = producida["payload"]
+
+        # El domicilio del depósito viaja en el evento y es relativo al
+        # directorio de estado, como toda ruta desde ADR-014 punto 3.
+        self.assertFalse(Path(payload["deposito"]).is_absolute())
+
+        archivos = payload["entrega"]["archivos"]
+        self.assertTrue(archivos)
+        for archivo in archivos:
+            self.assertNotIn("contenido", archivo)
+            self.assertEqual(len(archivo["sha256"]), 64)
+            # El rol se conserva: es parte de qué se entregó y pesa nada. Lo
+            # único que se sacó es el contenido.
+            self.assertIn("rol", archivo)
+
+    def test_la_entrega_se_reconstruye_desde_el_area_de_entregas(self):
+        run, _, _ = self.correr_cadena()
+        run_developer = self.run_developer_de(run)
+        (producida,) = self.de_tipo(run_developer, "entrega_producida")
+
+        deposito_1 = self.deposito_de(run_developer, 1)
+        self.assertTrue(deposito_1.is_dir())
+
+        entrega = cadena.entrega_de(self.store, run_developer)
+        self.assertEqual(
+            [a["ruta"] for a in entrega["archivos"]],
+            [a["ruta"] for a in producida["payload"]["entrega"]["archivos"]],
+        )
+        # Y lo reconstruido es byte a byte lo que está en el depósito, que desde
+        # ADR-017 es el único lugar donde el contenido existe.
+        for archivo in entrega["archivos"]:
+            self.assertEqual(
+                archivo["contenido"],
+                (deposito_1 / archivo["ruta"]).read_text(encoding="utf-8"),
+            )
+
+    def test_cada_iteracion_deposita_la_suya_incluida_la_rechazada(self):
+        """La iteración rechazada también se deposita, y es una decisión.
+
+        Hasta ADR-017 existía sólo adentro de su evento: al área de trabajo se
+        escribía recién cuando la unidad salía entregada, así que lo que el
+        verificador rechazó nunca tocaba el disco. Si el evento pierde el
+        contenido y sólo se deposita lo aceptado, ese código desaparece — y
+        ADR-015 punto 3 lo conserva por diseño, porque es lo que permite
+        entender por qué se rechazó.
+        """
+        registro = []
+        run, _, _ = self.correr_cadena(developer=developer_que_corrige(registro))
+        run_developer = self.run_developer_de(run)
+
+        producidas = self.de_tipo(run_developer, "entrega_producida")
+        self.assertEqual([e["payload"]["iteracion"] for e in producidas], [1, 2])
+
+        # La primera no tenía demo.html: por eso la rechazaron. Y sigue en el
+        # depósito, con su falta intacta.
+        rechazada = self.deposito_de(run_developer, 1)
+        self.assertTrue((rechazada / "pruebas.html").is_file())
+        self.assertFalse((rechazada / "demo.html").exists())
+
+        aceptada = self.deposito_de(run_developer, 2)
+        self.assertTrue((aceptada / "demo.html").is_file())
+
+    def test_un_evento_viejo_con_el_contenido_adentro_se_sigue_leyendo(self):
+        """ADR-017 punto 4: no se migra nada y las dos formas conviven.
+
+        Se distinguen **por presencia de campo**, no por fecha: el registro
+        histórico no lleva marca de versión y el día de la implementación no es
+        un dato que el evento tenga.
+        """
+        run_viejo = self.store.nuevo_run_id()
+        self.store.append(
+            run_viejo,
+            "entrega_producida",
+            "developer-agent",
+            {
+                "iteracion": 1,
+                "unidad": "U1",
+                "entrega": {
+                    "unidad": "U1",
+                    "archivos": [
+                        {"ruta": "src/u1.js", "rol": "codigo", "contenido": "hola"}
+                    ],
+                },
+            },
+        )
+
+        entrega = cadena.entrega_de(self.store, run_viejo)
+        self.assertEqual(entrega["archivos"][0]["contenido"], "hola")
+
+    def test_el_hash_del_evento_detecta_una_alteracion_del_deposito(self):
+        """El registro es inmutable y el depósito no: manda el registro."""
+        run, _, _ = self.correr_cadena()
+        run_developer = self.run_developer_de(run)
+
+        (self.deposito_de(run_developer, 1) / "demo.html").write_text(
+            "otra cosa", encoding="utf-8"
+        )
+
+        with self.assertRaises(deposito.DepositoAlterado):
+            cadena.entrega_de(self.store, run_developer)
+
+    def test_si_falta_un_archivo_del_deposito_la_cadena_falla_ruidosamente(self):
+        """El peor modo de falla: el que no tira excepción.
+
+        La entrega de una unidad ya hecha entra al prompt de las que dependen de
+        ella. Si el depósito no pudiera devolver el contenido y esto devolviera
+        la entrega a medias, no rompería nada visible: produciría una corrida
+        cara contra un contexto mutilado. Por eso levanta antes de armar nada.
+        """
+        run, plan, _ = self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_falla_en("U3")
+        )
+        run_developer = self.run_developer_de(run, "U1")
+        (self.deposito_de(run_developer, 1) / "demo.html").unlink()
+
+        llamadas = []
+
+        def espia(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
+                  paquete=None):
+            llamadas.append(unidad["id"])
+            return producir_entrega_stub(unidad, contexto, None, [], contexto_vault)
+
+        with self.assertRaises(deposito.DepositoIncompleto):
+            self.nodo(espia)({
+                "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
+                "techo_cadena": PEDIDO["techo_costo_usd"],
+            })
+
+        # Y no llegó a producir nada: falla antes de armar el contexto, no
+        # después de haberlo armado incompleto.
+        self.assertEqual(llamadas, [])
+
+    def test_el_corte_entre_depositar_y_registrar_deja_archivos_sin_evento(self):
+        """El orden elegido, comprobado por su consecuencia.
+
+        Se deposita, se relee para comprobar el hash, y recién entonces se
+        appendea. El corte deja archivos sin evento y nunca evento sin archivos:
+        el archivo huérfano es basura inerte que el reintento sobrescribe con lo
+        mismo, y el evento huérfano afirmaría una entrega exhibiendo el hash de
+        algo que no existe — y por ADR-011 punto 3 no se podría corregir.
+        """
+        plan = plan_de(UNA_UNIDAD)
+        unidad = plan["unidades"][0]
+        run_developer = self.store.nuevo_run_id()
+        estado = grafo_developer.EstadoDeveloper(
+            run_id=run_developer,
+            definicion=grafo.definicion_a_dict(self.definicion_developer),
+            plan=plan,
+            unidad=unidad,
+            contexto_unidades=[],
+            directorio=str(self.trabajo),
+            directorio_trabajo=cadena.directorio_de_unidad(str(self.trabajo), "U1"),
+            ya_depositado=[],
+            entrega=None,
+            incumplimientos=[],
+            iteracion=0,
+            resultado=None,
+            techos_efectivos={"costo": 1, "tiempo_min": 10, "iteraciones": 3},
+        )
+
+        cortado = StoreQueSeCortaAlRegistrarLaEntrega(self.store)
+        with self.assertRaises(CorteAlRegistrar):
+            grafo_developer.crear_grafo(producir_entrega_stub, cortado).invoke(estado)
+
+        # Quedaron los archivos y no quedó el evento.
+        deposito_1 = self.deposito_de(run_developer, 1)
+        huerfanos = {
+            p.relative_to(deposito_1): p.read_text(encoding="utf-8")
+            for p in sorted(deposito_1.rglob("*")) if p.is_file()
+        }
+        self.assertTrue(huerfanos)
+        self.assertEqual(self.de_tipo(run_developer, "entrega_producida"), [])
+
+        # El reintento los sobrescribe con contenido idéntico en la misma ruta,
+        # porque el hash de lo mismo es el mismo. La basura se limpia sola.
+        grafo_developer.crear_grafo(producir_entrega_stub, self.store).invoke(estado)
+        self.assertEqual(
+            {
+                p.relative_to(deposito_1): p.read_text(encoding="utf-8")
+                for p in sorted(deposito_1.rglob("*")) if p.is_file()
+            },
+            huerfanos,
+        )
+        (producida,) = self.de_tipo(run_developer, "entrega_producida")
+        self.assertEqual(producida["payload"]["iteracion"], 1)
 
 
 # --- 8 — orden topológico ---------------------------------------------------
