@@ -15,6 +15,27 @@ del Operational State, no de un checkpoint.
 
 El productor es inyectable con la misma forma que en T14, y por la misma razón:
 los tests ponen entregas predecibles y el modelo real entra sin tocar el grafo.
+
+## Dónde entra QA — ADR-018
+
+El nodo `qa` se inserta en la arista `valido` de `verificar`, que hasta ADR-018
+iba derecho a `fin`. Ahí y no en otro lado, por tres motivos:
+
+**Después del verificador estructural.** QA sólo ve entregas que ya pasaron la
+forma. Gastar modelo sobre una entrega a la que le falta un archivo es pagar por
+descubrir algo que otro ya dijo, más barato y antes.
+
+**Antes del Gate de salida.** Los dos Gates viven en la corrida del pedido, y
+todo este grafo corre adentro de un solo nodo de aquél. Estar acá adentro *es*
+estar antes del Gate.
+
+**Por unidad.** Es la única escala donde el veredicto sirve para algo: los
+incumplimientos vuelven al Developer de esta unidad por el bucle de corrección
+que ya existía, sin un segundo bucle y sin un techo nuevo.
+
+El grafo **sin `qa_fn` no tiene nodo `qa`**, en vez de tener uno que no hace
+nada. Un grafo que dice tener verificación sustantiva y no la corre miente sobre
+sí mismo en el único lugar donde alguien iría a mirar.
 """
 
 from typing import Any, Dict, List, Optional, TypedDict
@@ -22,13 +43,16 @@ from typing import Any, Dict, List, Optional, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 import deposito
+import ejecutor
 import operational_state
 import presupuesto
+import verificacion_sustantiva
 import verificador_entrega
 from grafo import FalloDeInfraestructura, UnidadAmbigua, _Techos, leer_contexto_vault
 from operational_state import relativa_a
 
 AGENTE = "developer-agent"
+AGENTE_QA = "qa-agent"
 PLATAFORMA = "plataforma"
 
 
@@ -42,10 +66,20 @@ class EstadoDeveloper(TypedDict):
     `directorio` es el de la cadena entera; `directorio_trabajo` es el de esta
     unidad. Son dos cosas distintas y la que le importa al agente es la segunda:
     es el domicilio que ADR-014 exige que reciba.
+
+    `deposito` es la ruta donde ADR-017 materializó la última entrega producida.
+    Viaja por el estado y no se recalcula en el nodo de QA: recalcularla sería
+    tener la fórmula escrita en dos lados y que un día dejen de coincidir. Es lo
+    que el campo 3 de la Agent Definition de QA llama "el depósito de la entrega".
+
+    `definicion_qa` es la de QA, distinta de `definicion`, que es la del
+    Developer. Son dos agentes con dos `vault_lectura` y por lo tanto con dos
+    contextos.
     """
 
     run_id: str
     definicion: Dict[str, Any]
+    definicion_qa: Optional[Dict[str, Any]]
     plan: Dict[str, Any]
     unidad: Dict[str, Any]
     contexto_unidades: List[Dict[str, Any]]
@@ -53,6 +87,7 @@ class EstadoDeveloper(TypedDict):
     directorio_trabajo: str
     ya_depositado: List[str]
     entrega: Optional[Dict[str, Any]]
+    deposito: Optional[str]
     incumplimientos: List[Dict[str, Any]]
     iteracion: int
     resultado: Optional[str]
@@ -163,7 +198,12 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 "entrega": registrada,
             },
         )
-        return {"entrega": entrega, "iteracion": iteracion, "incumplimientos": []}
+        return {
+            "entrega": entrega,
+            "iteracion": iteracion,
+            "incumplimientos": [],
+            "deposito": str(destino),
+        }
 
     return nodo
 
@@ -190,6 +230,88 @@ def _nodo_verificar(store):
             },
         )
         return {"incumplimientos": veredicto["incumplimientos"]}
+
+    return nodo
+
+
+def _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion):
+    """Verificación sustantiva de la unidad — ADR-018.
+
+    El agente produce casos de prueba; **la plataforma los ancla, los ejecuta y
+    emite el veredicto**. Es el mismo reparto que en `_nodo_verificar`: el
+    artefacto que sale del modelo va al verificador, nunca al revés.
+
+    `SinFrontera` escala en vez de aprobar. Que la máquina no tenga frontera de
+    kernel no dice nada sobre el entregable, y dar por buena una unidad que no se
+    pudo verificar sería registrar como verificado algo que nadie miró.
+    """
+
+    def nodo(estado):
+        run_id = estado["run_id"]
+        contexto = leer_contexto_vault(estado["definicion_qa"], ruta_vault)
+        try:
+            producido = qa_fn(
+                estado["unidad"],
+                estado["plan"],
+                estado["entrega"],
+                estado["deposito"],
+                contexto,
+            )
+        except FalloDeInfraestructura as fallo:
+            if fallo.costo:
+                presupuesto.registrar_consumo(store, run_id, fallo.costo)
+            store.append(
+                run_id,
+                "fallo_infraestructura",
+                PLATAFORMA,
+                {"detalle": str(fallo), "iteracion": estado["iteracion"], "etapa": "qa"},
+            )
+            return {"resultado": "escalado_por_infraestructura"}
+
+        if isinstance(producido, tuple):
+            casos, costo = producido
+        else:
+            casos, costo = producido, costo_iteracion
+        presupuesto.registrar_consumo(store, run_id, costo)
+
+        try:
+            resultado = verificacion_sustantiva.verificar(
+                estado["unidad"], casos, estado["deposito"]
+            )
+        except ejecutor.SinFrontera as sin_frontera:
+            store.append(
+                run_id,
+                "fallo_infraestructura",
+                PLATAFORMA,
+                {
+                    "detalle": str(sin_frontera),
+                    "iteracion": estado["iteracion"],
+                    "etapa": "qa",
+                },
+            )
+            return {"resultado": "escalado_por_sin_frontera"}
+
+        store.append(
+            run_id,
+            "qa_ejecutado",
+            AGENTE_QA,
+            {
+                "iteracion": estado["iteracion"],
+                "unidad": estado["unidad"]["id"],
+                "deposito": relativa_a(estado["deposito"], operational_state.DIR_ESTADO),
+                "cumple": not resultado["incumplimientos"],
+                "tabla": resultado["tabla"],
+                "incumplimientos": resultado["incumplimientos"],
+                # Los descartados son la evidencia de que el límite del campo 6
+                # operó. Sin registrarlos, "QA no exigió de más" es una
+                # afirmación sin cómo comprobarse.
+                "descartados": resultado["descartados"],
+                # La métrica del punto 5 de ADR-018: cuánto de lo prometido no se
+                # pudo comprobar. Es una señal sobre el Requirement Agent.
+                "no_verificables": resultado["no_verificables"],
+            },
+        )
+        return {"incumplimientos": resultado["incumplimientos"]}
 
     return nodo
 
@@ -250,8 +372,28 @@ def _tras_verificar(estado):
     return "reintenta"
 
 
-def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0):
-    """El grafo de una unidad. Nodos y aristas a mano, como exige ADR-006."""
+def _tras_qa(estado):
+    """El mismo corte que `_tras_verificar`, y a propósito.
+
+    QA no trae techo de iteraciones propio: el que reintenta es el Developer y el
+    techo que lo acota es el suyo. Un incumplimiento sustantivo y uno estructural
+    se tratan igual porque vienen en la misma forma y los corrige el mismo agente.
+    """
+    if estado["resultado"]:
+        return "fallo"
+    if not estado["incumplimientos"]:
+        return "cumple"
+    if estado["iteracion"] >= estado["techos_efectivos"]["iteraciones"]:
+        return "agotado"
+    return "no_cumple"
+
+
+def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0, qa_fn=None):
+    """El grafo de una unidad. Nodos y aristas a mano, como exige ADR-006.
+
+    Sin `qa_fn` el grafo es el de V0.2 exactamente: `verificar` válido va a `fin`
+    y el nodo `qa` no existe.
+    """
     grafo = StateGraph(EstadoDeveloper)
 
     grafo.add_node("verificar_techos", _nodo_verificar_techos(store))
@@ -259,6 +401,24 @@ def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0):
     grafo.add_node("verificar", _nodo_verificar(store))
     grafo.add_node("escalar", _nodo_escalar(store))
     grafo.add_node("fin", _nodo_fin(store))
+
+    if qa_fn is None:
+        tras_verificacion_estructural = "fin"
+    else:
+        tras_verificacion_estructural = "qa"
+        grafo.add_node("qa", _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion))
+        grafo.add_conditional_edges(
+            "qa",
+            _tras_qa,
+            {
+                "cumple": "fin",
+                # Al mismo lugar que un rechazo estructural: se vuelve a mirar el
+                # techo y se corrige. Un solo bucle, no dos.
+                "no_cumple": "verificar_techos",
+                "agotado": "escalar",
+                "fallo": "escalar",
+            },
+        )
 
     grafo.add_edge(START, "verificar_techos")
     grafo.add_conditional_edges(
@@ -270,7 +430,11 @@ def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0):
     grafo.add_conditional_edges(
         "verificar",
         _tras_verificar,
-        {"valido": "fin", "reintenta": "verificar_techos", "agotado": "escalar"},
+        {
+            "valido": tras_verificacion_estructural,
+            "reintenta": "verificar_techos",
+            "agotado": "escalar",
+        },
     )
     grafo.add_edge("escalar", "fin")
     grafo.add_edge("fin", END)

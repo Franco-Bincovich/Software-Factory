@@ -322,6 +322,10 @@ class SinPresupuestoHeredado(RuntimeError):
     """Lo que el pedido autorizó ya se gastó: no queda techo para ejecutar."""
 
 
+class QAIncompleto(RuntimeError):
+    """Llegó el productor de QA sin su Agent Definition, o al revés."""
+
+
 def pedido_de(store, run_id):
     """El pedido que originó la corrida, haya entrado por Intake o heredado."""
     for evento in store.leer_run(run_id):
@@ -486,7 +490,7 @@ def preparar_herencia(store, run_nombrado, reejecutar=False):
 
 def nodo_ejecutar_unidades(
     store, definicion_developer, producir_entrega_fn, raiz_trabajo,
-    ruta_vault=None, costo_iteracion=0.0,
+    ruta_vault=None, costo_iteracion=0.0, qa_fn=None, definicion_qa=None,
 ):
     """Fabrica el nodo del grafo externo que corre todas las unidades del plan.
 
@@ -496,13 +500,27 @@ def nodo_ejecutar_unidades(
     **Idempotente por obligación**, igual que los nodos de Gate: al reanudar,
     LangGraph lo re-ejecuta desde su primera línea. Las unidades que ya
     entregaron se saltean leyendo el Operational State.
+
+    `qa_fn` y `definicion_qa` van juntos o no van ninguno: sin la definición no
+    hay `vault_lectura` que leer, y ADR-014 punto 4 ya dijo qué hace un agente
+    ciego —no falla ruidosamente, inventa—. Sin los dos, la cadena corre como en
+    V0.2 y ADR-018 no participa.
     """
+    if (qa_fn is None) != (definicion_qa is None):
+        raise QAIncompleto(
+            "para correr la verificación sustantiva de ADR-018 hacen falta las "
+            "dos cosas: el productor de casos y la Agent Definition del QA "
+            "Agent, que es de donde sale qué documentos del Vault lee. Llegó "
+            "sólo %s." % ("el productor" if qa_fn else "la definición")
+        )
+
     techos_developer = {
         "costo": definicion_developer.techo_costo_usd,
         "tiempo_min": definicion_developer.techo_tiempo_min,
         "iteraciones": definicion_developer.techo_iteraciones,
     }
     definicion_dict = definicion_a_dict(definicion_developer)
+    definicion_qa_dict = None if definicion_qa is None else definicion_a_dict(definicion_qa)
 
     def nodo(estado):
         run_pedido = estado["run_id"]
@@ -538,7 +556,7 @@ def nodo_ejecutar_unidades(
                 )
                 return {
                     "directorio": directorio,
-                    "entregas": _resumen(entregas_por_unidad, hechas),
+                    "entregas": _resumen(store, entregas_por_unidad, hechas),
                     "resultado": "escalado_por_techo_de_cadena",
                 }
 
@@ -547,6 +565,7 @@ def nodo_ejecutar_unidades(
                 definicion_developer, definicion_dict, techos_developer, directorio,
                 ya_depositado(entregas_por_unidad),
                 producir_entrega_fn, ruta_vault, costo_iteracion,
+                qa_fn, definicion_qa_dict,
             )
             runs.append(resultado["run_id"])
 
@@ -577,7 +596,7 @@ def nodo_ejecutar_unidades(
                 )
                 return {
                     "directorio": directorio,
-                    "entregas": _resumen(entregas_por_unidad, hechas),
+                    "entregas": _resumen(store, entregas_por_unidad, hechas),
                     "resultado": "escalado_por_unidad_fallida",
                 }
 
@@ -593,12 +612,29 @@ def nodo_ejecutar_unidades(
                 {"unidad": unidad["id"], "run_developer": resultado["run_id"]},
             )
 
-        return {"directorio": directorio, "entregas": _resumen(entregas_por_unidad, hechas)}
+        return {
+            "directorio": directorio,
+            "entregas": _resumen(store, entregas_por_unidad, hechas),
+        }
 
     return nodo
 
 
-def _resumen(entregas_por_unidad, hechas):
+def _no_verificables(store, run_developer):
+    """Cuántos criterios de la unidad no se pudieron comprobar ejecutando.
+
+    Es la métrica del punto 5 de ADR-018, y se lee del último `qa_ejecutado` de
+    la corrida: si el Developer reintentó, lo que vale es la verificación de la
+    entrega que quedó. Devuelve `None` cuando QA no corrió, que no es lo mismo
+    que cero — cero significa que se comprobó todo.
+    """
+    eventos = [e for e in store.leer_run(run_developer) if e["tipo"] == "qa_ejecutado"]
+    if not eventos:
+        return None
+    return len(eventos[-1]["payload"]["no_verificables"])
+
+
+def _resumen(store, entregas_por_unidad, hechas):
     """Lo que se somete en el Gate de salida: qué unidad, qué corrida, qué archivos.
 
     Cada archivo va con su **SHA-256**, por ADR-015 punto 2. El hash tiene que
@@ -610,6 +646,11 @@ def _resumen(entregas_por_unidad, hechas):
     Operational State, y el Gate se resuelve abriendo los dos HTML, no leyendo
     JSON en una terminal. El hash es corto y sirve para comprobar; el contenido
     volvería ilegible lo que una persona tiene que mirar.
+
+    `no_verificables` es la métrica de ADR-018 punto 5, y va acá porque acá es
+    donde la mira una persona. La cuenta habla del plan, no de la entrega: un
+    criterio que nadie pudo comprobar ejecutando es un criterio mal escrito por
+    el Requirement Agent, y el Gate de salida es donde eso se ve acumulado.
     """
     return [
         {
@@ -620,6 +661,7 @@ def _resumen(entregas_por_unidad, hechas):
                 {"ruta": a["ruta"], "sha256": sha256_de(a["contenido"])}
                 for a in (entregas_por_unidad.get(uid) or {}).get("archivos", [])
             ],
+            "no_verificables": _no_verificables(store, hechas[uid]),
         }
         for uid in sorted(hechas)
     ]
@@ -629,6 +671,7 @@ def _correr_unidad(
     store, unidad, plan, unidades_por_id, entregas_por_unidad, run_pedido,
     definicion, definicion_dict, techos, directorio, inventario,
     producir_entrega_fn, ruta_vault, costo_iteracion,
+    qa_fn=None, definicion_qa=None,
 ):
     """Abre una corrida de Developer para una unidad y la corre hasta el final."""
     run_id = store.nuevo_run_id()
@@ -671,9 +714,11 @@ def _correr_unidad(
         iteracion=0,
         resultado=None,
         techos_efectivos=techos,
+        definicion_qa=definicion_qa,
+        deposito=None,
     )
     compilado = grafo_developer.crear_grafo(
-        producir_entrega_fn, store, ruta_vault, costo_iteracion
+        producir_entrega_fn, store, ruta_vault, costo_iteracion, qa_fn=qa_fn
     )
     final = compilado.invoke(estado)
     return {
@@ -688,6 +733,7 @@ __all__ = [
     "EvidenciaIncompleta",
     "PlanNoHeredable",
     "PlanYaEjecutado",
+    "QAIncompleto",
     "SinPresupuestoHeredado",
     "RutaFueraDelDirectorio",
     "RAIZ_TRABAJO_POR_DEFECTO",

@@ -222,9 +222,70 @@ salida; `--conservar-trabajo` no lo borra.
 Requirement Agent corriendo solo. Esa corrida declara un solo Gate, porque sin
 Developer no hay entrega que aprobar.
 
-**Un solo modo para toda la cadena.** `--stub` usa los dos productores de
-relleno; el modo modelo usa los dos reales. Una corrida no produce el plan contra
-el modelo y el código con el stub, ni al revés.
+**Un solo modo para toda la cadena.** `--stub` usa los productores de relleno; el
+modo modelo usa los reales. Una corrida no produce el plan contra el modelo y el
+código con el stub, ni al revés — y lo mismo vale para los casos de prueba de QA.
+
+## Verificación sustantiva — el QA Agent
+
+Implementa ADR-018. El verificador de entregas mira la **forma** de lo entregado
+sin ejecutarlo; QA mira el **resultado**: corre los criterios de aceptación del
+plan sobre el depósito de la entrega, bajo la frontera de kernel de ADR-016.
+
+```
+./.venv/bin/python correr.py --pedido pedido.json \
+    --definicion "…/Requirement Agent.md" \
+    --definicion-developer "…/Developer Agent.md" \
+    --definicion-qa "…/QA Agent.md" --stub
+```
+
+**Se enciende con el flag; no viene por defecto.** No es una concesión: la
+medición de ADR-018 sobre el plan actual da **2 criterios ejecutables de 11**, así
+que hoy una corrida con QA escala casi todo. Poder correr sin QA es lo que permite
+corregir al Requirement Agent sin quedarse sin fábrica mientras tanto. Además QA
+depende de que la máquina tenga frontera de kernel, y encenderlo por defecto
+rompería corridas que hoy funcionan por un motivo del entorno y no del entregable.
+
+**Encenderlo es un hecho de la corrida**, igual que el modo y que la definición
+del Developer. Queda en `cadena_fijada` bajo la clave `qa` —en `null` cuando no la
+hubo— y `--reanudar` lo lee de ahí en vez de deducirlo de los flags. Encender QA a
+mitad de una corrida dejaría unas unidades verificadas contra los criterios del
+plan y otras no, sin nada en el registro que diga cuáles.
+
+**Entra por unidad, después del verificador estructural y antes del Gate de
+salida**, y reusa el bucle de reintento que ya existía: los incumplimientos
+sustantivos vuelven al Developer en la misma forma `{regla, archivo, detalle}` que
+los estructurales, acotados por el mismo techo de iteraciones. Ni un segundo bucle
+ni un techo nuevo.
+
+**El límite —QA no puede exigir lo que el plan no incluyó— es mecánico.** Cada
+caso de prueba declara de qué criterio de su unidad deriva, y el índice se
+resuelve **antes** de ejecutar nada. El veredicto lo emite el criterio, no el
+caso: `veredicto` recorre `unidad["criterios"]`, así que la superficie de rechazo
+es por construcción la lista de criterios del plan y un caso inventado sobre una
+capacidad ausente no tiene dónde colgarse. No se coteja contra `fuera_de_alcance`:
+son strings en prosa libre, y cualquier cotejo sería solapamiento de palabras
+clave — un heurístico que falla en los dos sentidos justo en el borde que se
+quiere cuidar.
+
+**Los criterios que no se pudieron comprobar ejecutando se declaran, no se
+juzgan.** Un criterio sin ningún caso anclado sale `no_verificable_mecanicamente`,
+y el conteo viaja hasta lo que somete el Gate de salida. **Es una métrica sobre el
+Requirement Agent, no sobre el Developer**: dice cuánto de lo que el plan prometió
+no era comprobable.
+
+**Sin frontera de kernel no se aprueba: se escala.** Que la máquina no pueda
+verificar no dice nada sobre el entregable, y registrar como verificado algo que
+nadie miró es la única salida que no está disponible.
+
+**El stub de QA no propone ningún caso, a propósito.** Los otros dos stubs
+fabrican un artefacto de relleno porque su forma está fijada por un contrato;
+derivar un caso de prueba exige leer prosa y traducirla a una expresión
+ejecutable, que es justo lo que sin modelo no se puede hacer. Fabricar casos que
+pasen contra el entregable del stub del Developer daría verde sin haber mirado
+nada. Con la lista vacía, todos los criterios salen `no_verificable_mecanicamente`
+y la corrida queda diciendo exactamente eso — y, de paso, `--stub` no necesita
+frontera de kernel.
 
 ## Heredar un plan ya verificado
 
@@ -557,7 +618,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Doscientos noventa y cinco tests, uno por cada fila de los criterios de
+Trescientos setenta y siete tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -573,18 +634,20 @@ después y las piezas de V0.2:
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 39 | un defecto sembrado por regla sobre la entrega limpia |
-| `test_cadena.py` | 43 | la cadena completa, el reintento, la detención, el techo de la cadena y el depósito de artefactos |
+| `test_cadena.py` | 62 | la cadena completa, el reintento, la detención, el techo de la cadena, el depósito de artefactos y el enganche de QA |
 | `test_productor_entrega.py` | 31 | el productor de entregas, con cliente falso |
-| `test_correr_cadena.py` | 19 | la costura entre la CLI y la cadena, y el régimen declarado |
+| `test_correr_cadena.py` | 33 | la costura entre la CLI y la cadena, el régimen declarado y el encendido de QA |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
 | `test_aislamiento_del_estado.py` | 5 | que la suite no escriba en el área de estado real |
 | `test_conteos_declarados.py` | 4 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
 | `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
+| `test_verificacion_sustantiva.py` | 22 | el anclaje, el veredicto por criterio y el invariante de la superficie de rechazo contra salidas fabricadas |
+| `test_productor_qa.py` | 27 | el productor de casos de prueba, con cliente falso, y la Agent Definition del QA Agent |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
 
-**Ningún test invoca al modelo.** Los dos productores reales se ejercitan con un
+**Ningún test invoca al modelo.** Los tres productores reales se ejercitan con un
 cliente falso y la CLI con un espía en lugar del productor; `.env` queda fuera
 de juego para que la credencial verdadera no se cuele en el entorno de un test. Correr la suite no
 cuesta plata.
