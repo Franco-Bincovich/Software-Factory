@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import correr  # noqa: E402
 import gates  # noqa: E402
 import grafo  # noqa: E402
+import operational_state  # noqa: E402
 import presupuesto  # noqa: E402
 import productor  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
@@ -57,6 +58,14 @@ class BaseCLI(unittest.TestCase):
 
         self.ruta_db = self.tmp / "estado" / "factory-test.db"
         self.ruta_checkpointer = self.tmp / "estado" / "checkpointer" / "checkpoints.db"
+
+        # El directorio de estado, también al temporal. Estos tests hoy no
+        # llegan a materializar evidencia —van con `--solo-plan`—, así que no
+        # fugan; pero el agujero es el mismo que tenía el `BaseCLI` de
+        # `test_correr_cadena.py` y está a un test de distancia de abrirse.
+        estado = mock.patch.object(operational_state, "DIR_ESTADO", self.tmp / "estado")
+        estado.start()
+        self.addCleanup(estado.stop)
 
         # El entorno queda aislado y se restaura solo. Sin credencial: que una
         # corrida en modo stub no la exija es parte de lo que se comprueba.
