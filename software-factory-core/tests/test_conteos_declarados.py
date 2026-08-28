@@ -24,6 +24,12 @@ concreto: si mañana un ADR vuelve a citar uno de estos números, el guardián n
 ve.** Queda a cargo de quien escriba el ADR. La exclusión es deliberada; no la
 levantes para hacer pasar un test.
 
+La exclusión es sobre las **afirmaciones** que un ADR hace, no sobre el
+directorio. `08 - ADR/` sí se lee como **inventario**: cuántos ADRs aceptados hay
+es un dato que sale de contar archivos y leer un campo del frontmatter, y es lo
+que declara `Project Master Plan:31`. Contar no es interpretar; lo que el
+guardián no hace es corregir la prosa de adentro de un ADR.
+
 **Las nueve reglas de validez del Contrato de Entrega.** Viven numeradas en un
 documento del Vault y no tienen contraparte fiel en el código: el verificador
 emite `C0`–`C8` porque la regla 9 la cubre el esquema, así que los nueve
@@ -50,6 +56,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 # afirmaciones que un agente carga como norma.
 VAULT = RAIZ.parent
 TESTS = RAIZ / "tests"
+DIR_ADR = VAULT / "08 - ADR"
 
 import agent_loader
 import verificador
@@ -110,6 +117,30 @@ def _reglas_de_t7():
     return sum(1 for n in vars(verificador) if re.fullmatch(r"_regla_[1-9]\d*", n))
 
 
+RE_ARCHIVO_ADR = re.compile(r"^ADR-(\d+)\b")
+RE_ESTADO = re.compile(r"^estado:[ \t]*(\S+)", re.M)
+
+
+def _adrs_aceptados():
+    """Los números de ADR aceptados, según el directorio y el frontmatter.
+
+    Se cuenta `aceptado` y no archivos, porque la línea que esto guarda dice
+    "ADRs **aprobados**". Contar archivos mediría una cosa y afirmaría otra: un
+    ADR propuesto está en el directorio y no aprueba nada.
+
+    `estado` se toma de la primera aparición, que es la del frontmatter por
+    estar arriba de todo. Devuelve el conjunto de números, no la cantidad: el
+    rango declarado necesita saber *cuáles*, no cuántos.
+    """
+    numeros = set()
+    for archivo in DIR_ADR.glob("ADR-*.md"):
+        m = RE_ARCHIVO_ADR.match(archivo.name)
+        estado = RE_ESTADO.search(archivo.read_text(encoding="utf-8"))
+        if m and estado and estado.group(1) == "aceptado":
+            numeros.add(int(m.group(1)))
+    return numeros
+
+
 CONTEOS = {
     "reglas_t7": (
         _reglas_de_t7,
@@ -130,6 +161,10 @@ CONTEOS = {
     "tests": (
         lambda: sum(_tests_en(a) for a in _archivos_de_test()),
         "los `def test_` bajo `tests/`",
+    ),
+    "adrs_aprobados": (
+        lambda: len(_adrs_aceptados()),
+        "los `ADR-NNN*.md` de `08 - ADR/` con `estado: aceptado`",
     ),
 }
 
@@ -238,7 +273,36 @@ AFIRMACIONES = (
      r"de la tabla: son <N>"),
     ("tests:test_cadena.py", "software-factory-core/docs/cadena-spec.md",
      r"<N> tests contra un Operational State"),
+
+    # --- los ADRs aprobados -----------------------------------------------
+    ("adrs_aprobados", "01 - Master Plan/Project Master Plan.md",
+     r"ADRs aprobados: <N> \("),
 )
+
+
+# El rango que acompaña al número en `Project Master Plan:31`. Se guarda aparte
+# porque no es un conteo: es el conjunto de ADRs, y se verifica por igualdad
+# contra los números que hay en el directorio.
+RANGO_ADRS = ("01 - Master Plan/Project Master Plan.md",
+              r"ADRs aprobados: \d+ \(([^)]*)\)")
+
+# Gramática cerrada de un tramo: `ADR-NNN` o `ADR-NNN a ADR-MMM`. No hay nada
+# que interpretar —o la frase tiene esta forma o no la tiene—, y si no la tiene
+# el guardián lo dice en vez de adivinar.
+RE_TRAMO_ADR = re.compile(r"ADR-(\d+)(?: a ADR-(\d+))?")
+
+
+def _expandir_rango(expresion):
+    """Los números que el rango declara, o None si no respeta la gramática."""
+    numeros = set()
+    for tramo in expresion.split(","):
+        m = RE_TRAMO_ADR.fullmatch(tramo.strip())
+        if not m:
+            return None
+        desde = int(m.group(1))
+        hasta = int(m.group(2)) if m.group(2) else desde
+        numeros.update(range(desde, hasta + 1))
+    return numeros
 
 
 def _compilar(patron):
@@ -282,6 +346,38 @@ class ConteosDeclarados(unittest.TestCase):
                         f"    el número sale de: {origen}"
                     )
         self.assertEqual(desfasadas, [], "\n" + "\n".join(desfasadas))
+
+    def test_el_rango_de_adrs_nombra_los_que_estan_en_el_directorio(self):
+        """El número puede coincidir y el rango estar mal igual.
+
+        `ADRs aprobados: 17` sigue siendo cierto si se acepta ADR-018 y se
+        rechaza ADR-013: cambian cuáles, no cuántos. El rango es lo que dice
+        cuáles, así que se verifica contra el conjunto y no contra el total.
+        """
+        ruta, patron = RANGO_ADRS
+        texto = (VAULT / ruta).read_text(encoding="utf-8")
+        m = re.search(patron, texto)
+        self.assertIsNotNone(
+            m, f"{ruta} — no se encontró el rango de ADRs /{patron}/")
+
+        linea = texto.count("\n", 0, m.start()) + 1
+        declarados = _expandir_rango(m.group(1))
+        self.assertIsNotNone(
+            declarados,
+            f"{ruta}:{linea} — el rango {m.group(1)!r} no respeta la forma "
+            f"`ADR-NNN` o `ADR-NNN a ADR-MMM` separados por comas. Si la "
+            f"redacción cambió a propósito, volvé a registrarla acá.")
+
+        reales = _adrs_aceptados()
+        def _fmt(ns):
+            return ", ".join("ADR-%03d" % n for n in sorted(ns)) or "ninguno"
+        self.assertEqual(
+            declarados, reales,
+            f"\n{ruta}:{linea} declara un rango que no coincide con "
+            f"`08 - ADR/`\n"
+            f"    dice: {m.group(0).strip()!r}\n"
+            f"    declarados y no aceptados: {_fmt(declarados - reales)}\n"
+            f"    aceptados y no declarados: {_fmt(reales - declarados)}")
 
     def test_la_tabla_de_tests_del_readme_coincide_archivo_por_archivo(self):
         readme = RAIZ / "README.md"

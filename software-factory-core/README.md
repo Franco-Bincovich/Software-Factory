@@ -557,7 +557,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Doscientos cincuenta y nueve tests, uno por cada fila de los criterios de
+Doscientos sesenta tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -578,7 +578,7 @@ después y las piezas de V0.2:
 | `test_correr_cadena.py` | 19 | la costura entre la CLI y la cadena, y el régimen declarado |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
 | `test_aislamiento_del_estado.py` | 5 | que la suite no escriba en el área de estado real |
-| `test_conteos_declarados.py` | 3 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
+| `test_conteos_declarados.py` | 4 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
