@@ -432,9 +432,15 @@ directorio hermano del vault y de este repo, que es donde vive hoy:
 <hermana-del-repo>/software-factory-state/factory.db
 ```
 
-De ese mismo directorio cuelgan `trabajo/` y `checkpointer/`. Una sola variable
-gobierna las tres rutas a propósito: con una variable por ruta, el estado podría
-quedar partido en discos distintos sin que nadie avise.
+De ese mismo directorio cuelgan `trabajo/`, `entregas/` y `checkpointer/`. Una
+sola variable gobierna las cuatro rutas a propósito: con una variable por ruta,
+el estado podría quedar partido en discos distintos sin que nadie avise.
+
+`trabajo/` y `entregas/` son hermanas y no la misma carpeta. La primera es
+descartable y se borra al aprobar el Gate de salida; la segunda es la evidencia
+de lo entregado —ADR-015— y sobrevive. La evidencia se escribe **desde los
+eventos**, no copiando el directorio de trabajo: por eso es derivable, y si
+alguna vez discrepara con el registro, gana el registro.
 
 Si el directorio no existe, se crea al abrir el almacén. La ruta también es
 configurable por constructor; los tests siempre usan una base temporal.
@@ -450,6 +456,10 @@ Es el riesgo R8 del registro del Project Master Plan, hoy abierto. El
 procedimiento de respaldo se declara en Infrastructure, documento todavía
 bloqueado. Hasta entonces **el respaldo es manual y es responsabilidad del
 CEO.**
+
+`entregas/` entra en la misma categoría y hereda el mismo riesgo. Es regenerable
+desde los eventos —esa es la ventaja de derivarla del registro—, pero solo
+mientras el registro exista.
 
 ## Armazón de ejecución (T14)
 
