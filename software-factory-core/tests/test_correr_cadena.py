@@ -23,6 +23,7 @@ sys.path.insert(0, str(RAIZ))
 
 import gates  # noqa: E402
 import grafo  # noqa: E402
+import operational_state  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
 
 import correr  # noqa: E402
@@ -59,7 +60,18 @@ class BaseCLI(unittest.TestCase):
         self.ruta_checkpointer = raiz / "checkpoints.db"
         self.trabajo = raiz / "trabajo"
 
+        # El temporal es el directorio de estado durante el test, igual que en
+        # `BaseCadena`. Los tres flags de arriba redirigen tres rutas, pero
+        # `entregas/` es una cuarta que deriva de `DIR_ESTADO` y no tiene flag:
+        # sin esto, materializar la evidencia escribía en el área real y la
+        # suite contaminaba datos de producción con su propia salida.
+        # `operational_state.py` ya lo advierte: una sola variable gobierna el
+        # estado, y redirigir las derivadas una por una deja agujeros.
+        self._dir_estado = operational_state.DIR_ESTADO
+        operational_state.DIR_ESTADO = raiz
+
     def tearDown(self):
+        operational_state.DIR_ESTADO = self._dir_estado
         self._dir.cleanup()
 
     # --- utilidades ---------------------------------------------------------

@@ -360,37 +360,44 @@ ENTREGABLES_DEPOSITADOS = {
 
 
 class TrabajoYaAprobado(unittest.TestCase):
-    """V5 contra entregas reales que ya pasaron el Gate de salida.
+    """V5 contra la forma real que la fábrica emite.
 
     Es la comprobación que decide si la regla está bien escrita. Los casos
     sembrados sólo demuestran que V5 rechaza; éste demuestra que rechaza *lo
-    que hay que rechazar*. Si marca trabajo que el CEO ya aprobó, está mal la
-    regla, no el trabajo.
+    que hay que rechazar*. Si marca la salida que la cadena produce cuando todo
+    salió bien, está mal la regla, no la salida.
 
     **De dónde salieron los fixtures.** Son copia byte a byte de
     `entregas/5bf52c6d1bee4325b0ff563de29d3fb7/U1`, extraídos el 2026-08-28 del
-    área de entregas de la máquina del CEO. Ese día había dieciséis corridas
-    depositadas y los cuatro entregables eran **idénticos en las dieciséis**:
-    una variante de contenido por archivo, verificado por hash. Por eso una
-    unidad es el conjunto entero y no una muestra —copiar dieciséis veces los
-    mismos bytes no agregaría un solo caso—, y por eso cubre las dos formas de
-    carga que la fábrica produce hoy: `require` de builtin (`node:test`,
-    `node:assert`), `require` relativo al propio directorio (`../src/u1.js`) y
-    `<script src="./src/u1.js">`.
+    área de entregas —`entregas/`, donde ADR-015 materializa la evidencia—.
+    Ese día había dieciséis corridas depositadas y los cuatro entregables eran
+    **idénticos en las dieciséis**: una variante de contenido por archivo,
+    verificado por hash. Por eso una unidad es el conjunto entero y no una
+    muestra —copiar dieciséis veces los mismos bytes no agregaría un solo
+    caso—, y por eso cubre las formas de carga que la fábrica produce hoy:
+    `require` de builtin (`node:test`, `node:assert`), `require` relativo al
+    propio directorio (`../src/u1.js`) y `<script src="./src/u1.js">`.
 
-    **Son reales, no inventados, pero salieron del stub.** La primera línea de
-    `src/u1.js` lo dice: "producida por el stub del Developer. No hubo modelo".
-    Son entregas que la cadena depositó y que el Gate aprobó, no código que un
-    modelo escribió. Para lo que este test comprueba —que V5 no rechace la
-    forma que la fábrica emite— alcanza; para afirmar que V5 tolera todo lo que
-    un modelo podría escribir, no. Cuando haya corridas reales conviene sumar
-    una acá.
+    **Qué son y qué no.** Son archivos que la cadena depositó de verdad, no
+    casos inventados para que la regla pase: tienen los cuatro entregables del
+    contrato y la forma exacta que emite el productor. Pero no pasaron por un
+    Gate, y salieron del stub —la primera línea de `src/u1.js` lo dice:
+    "producida por el stub del Developer. No hubo modelo"—. Para lo que este
+    test comprueba —que V5 no rechace la forma que la fábrica emite— alcanza;
+    para afirmar que V5 tolera todo lo que un modelo podría escribir, no.
+    Cuando una corrida con modelo materialice evidencia, conviene sumarla acá.
+
+    La redacción anterior decía "entregas reales que ya pasaron el Gate de
+    salida" y afirmaba que el Gate las había aprobado. Se corrigió contra la
+    evidencia: el cruce del `factory.db` real contra `entregas/` mostró que las
+    24 corridas depositadas son huérfanas —ninguna tiene un solo evento en el
+    store— y que son todas salida de la propia suite. El fixture sirve igual,
+    pero por su forma, no por una aprobación que nunca existió.
 
     Antes vivía leyendo `entregas/` directamente. Se cambió por dos razones:
     ese directorio está fuera del repo, así que el test se salteaba en CI y en
-    cualquier otra máquina; y `test_cadena.py` deposita ahí sus propias
-    corridas, con lo que la suite terminaba validando en parte lo que ella
-    misma acababa de generar.
+    cualquier otra máquina; y la suite depositaba ahí sus propias corridas, con
+    lo que terminaba validando en parte lo que ella misma acababa de generar.
     """
 
     def test_los_entregables_depositados_pasan_v5(self):
