@@ -27,6 +27,7 @@ import grafo_developer  # noqa: E402
 from grafo import UnidadAmbigua  # noqa: E402
 import operational_state  # noqa: E402
 import presupuesto  # noqa: E402
+import verificacion_sustantiva  # noqa: E402
 from agent_loader import cargar  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
 
@@ -1182,6 +1183,284 @@ class OrdenTopologico(unittest.TestCase):
         plan = plan_de([("U1", ["U2"]), ("U2", ["U1"])])
         with self.assertRaises(cadena.CicloDeDependencias):
             cadena.orden_topologico(plan)
+
+
+# --- 9 — el enganche de QA en la cadena — ADR-018 ---------------------------
+
+
+def qa_que_devuelve(casos, registro=None):
+    """Una `qa_fn` que no invoca modelo y anota con qué la llamaron."""
+
+    def producir(unidad, plan, entrega, deposito, contexto_vault):
+        if registro is not None:
+            registro.append(
+                {
+                    "unidad": unidad["id"],
+                    "deposito": deposito,
+                    "archivos_de_la_entrega": [a["ruta"] for a in entrega["archivos"]],
+                    "contexto_vault": contexto_vault,
+                }
+            )
+        return list(casos), 0.0
+
+    return producir
+
+
+class ResultadoFalso(object):
+    def __init__(self, salida):
+        self.salida = salida
+        self.error = ""
+        self.codigo = 0
+        self.cortado_por_tiempo = False
+        self.frontera = "ninguna"
+        self.segundos = 0.0
+
+
+class EngancheDeQA(BaseCadena):
+    """QA corre por unidad, después del verificador estructural.
+
+    Los casos se inyectan y el ejecutor se reemplaza: acá se prueba dónde entra
+    QA en el grafo y qué queda registrado, no la frontera —eso es
+    `test_ejecutor`— ni el veredicto —eso es `test_verificacion_sustantiva`—.
+    """
+
+    def setUp(self):
+        super().setUp()
+        ruta_qa = Path(self._dir.name) / "qa.md"
+        ruta_qa.write_text(definicion_texto("qa-agente-de-prueba", 1, 5, 1), encoding="utf-8")
+        self.definicion_qa = cargar(str(ruta_qa))
+        self._ejecutar = verificacion_sustantiva.ejecutor.ejecutar_expresion
+
+    def tearDown(self):
+        verificacion_sustantiva.ejecutor.ejecutar_expresion = self._ejecutar
+        super().tearDown()
+
+    def ejecutor_que_devuelve(self, salida):
+        verificacion_sustantiva.ejecutor.ejecutar_expresion = (
+            lambda deposito, expresion: ResultadoFalso(salida)
+        )
+
+    def nodo_con_qa(self, qa_fn, developer=producir_entrega_stub):
+        return cadena.nodo_ejecutar_unidades(
+            self.store, self.definicion_developer, developer, str(self.trabajo),
+            None, 0.0, qa_fn=qa_fn, definicion_qa=self.definicion_qa,
+        )
+
+    def correr_con_qa(self, qa_fn, unidades=UNA_UNIDAD, developer=producir_entrega_stub):
+        plan = plan_de(unidades)
+        run = grafo.ejecutar(
+            str(self.ruta_requirement), dict(PEDIDO), productor_de(plan), self.store,
+            self.checkpointer, None, 0.0, modo=grafo.MODO_STUB,
+            ejecutar_unidades_fn=self.nodo_con_qa(qa_fn, developer),
+            borrar_trabajo_fn=cadena.borrar_directorio,
+            materializar_fn=cadena.materializar_evidencia,
+        )
+        gates.resolver(self.store, run, "entrada", "aprobado")
+        estado = grafo.reanudar(
+            run, self.store, self.checkpointer, productor_de(plan), None, 0.0,
+            self.nodo_con_qa(qa_fn, developer), cadena.borrar_directorio,
+            cadena.materializar_evidencia,
+        )
+        return run, plan, estado
+
+    # --- las dos piezas van juntas -----------------------------------------
+
+    def test_el_productor_sin_definicion_no_arma_el_nodo(self):
+        with self.assertRaises(cadena.QAIncompleto) as capturado:
+            cadena.nodo_ejecutar_unidades(
+                self.store, self.definicion_developer, producir_entrega_stub,
+                str(self.trabajo), None, 0.0, qa_fn=qa_que_devuelve([]),
+            )
+        self.assertIn("Llegó sólo el productor", str(capturado.exception))
+
+    def test_la_definicion_sin_productor_tampoco(self):
+        with self.assertRaises(cadena.QAIncompleto) as capturado:
+            cadena.nodo_ejecutar_unidades(
+                self.store, self.definicion_developer, producir_entrega_stub,
+                str(self.trabajo), None, 0.0, definicion_qa=self.definicion_qa,
+            )
+        self.assertIn("Llegó sólo la definición", str(capturado.exception))
+
+    def test_sin_ninguno_de_los_dos_la_cadena_corre_como_en_v02(self):
+        run, _, _ = self.correr_cadena()
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        self.assertEqual(self.de_tipo(run_developer, "qa_ejecutado"), [])
+
+    # --- dónde entra --------------------------------------------------------
+
+    def test_qa_corre_una_vez_por_unidad_despues_de_la_verificacion_estructural(self):
+        run, _, _ = self.correr_con_qa(qa_que_devuelve([]), TRES_UNIDADES)
+        for lanzada in self.de_tipo(run, "unidad_lanzada"):
+            run_developer = lanzada["payload"]["run_developer"]
+            tipos = [
+                e["tipo"] for e in self.store.leer_run(run_developer)
+                if e["tipo"] in ("verificacion_ejecutada", "qa_ejecutado")
+            ]
+            self.assertEqual(tipos, ["verificacion_ejecutada", "qa_ejecutado"])
+
+    def test_qa_corre_antes_del_gate_de_salida(self):
+        run, _, _ = self.correr_con_qa(qa_que_devuelve([]))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        self.assertEqual(len(self.de_tipo(run_developer, "qa_ejecutado")), 1)
+        # La cadena quedó frenada en el Gate de salida sin resolver: QA ya corrió.
+        gates_abiertos = [e["payload"]["gate"] for e in self.de_tipo(run, "gate_abierto")]
+        self.assertEqual(gates_abiertos, ["entrada", "salida"])
+
+    def test_qa_recibe_el_deposito_de_la_entrega_producida(self):
+        registro = []
+        run, _, _ = self.correr_con_qa(qa_que_devuelve([], registro))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (producida,) = self.de_tipo(run_developer, "entrega_producida")
+        self.assertEqual(len(registro), 1)
+        # El mismo depósito que ADR-017 registró, no uno recalculado.
+        self.assertEqual(
+            operational_state.relativa_a(
+                registro[0]["deposito"], operational_state.DIR_ESTADO
+            ),
+            producida["payload"]["deposito"],
+        )
+        self.assertTrue(Path(registro[0]["deposito"]).is_dir())
+
+    def test_qa_recibe_la_unidad_que_se_esta_verificando(self):
+        registro = []
+        self.correr_con_qa(qa_que_devuelve([], registro), TRES_UNIDADES)
+        self.assertEqual(
+            sorted(r["unidad"] for r in registro), ["U1", "U2", "U3"]
+        )
+
+    # --- qué queda registrado ----------------------------------------------
+
+    def test_el_evento_lleva_la_tabla_y_la_metrica(self):
+        run, _, _ = self.correr_con_qa(qa_que_devuelve([]))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "qa_ejecutado")
+        self.assertEqual(evento["actor"], grafo_developer.AGENTE_QA)
+        payload = evento["payload"]
+        self.assertEqual(payload["unidad"], "U1")
+        self.assertTrue(payload["cumple"])
+        self.assertEqual([f["regla"] for f in payload["tabla"]], ["AC-U1-1"])
+        # Sin casos, el único criterio no se pudo comprobar.
+        self.assertEqual(payload["no_verificables"], ["AC-U1-1"])
+
+    def test_el_evento_no_lleva_rutas_de_la_maquina(self):
+        run, _, _ = self.correr_con_qa(qa_que_devuelve([]))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "qa_ejecutado")
+        self.assertFalse(Path(evento["payload"]["deposito"]).is_absolute())
+
+    def test_los_casos_descartados_quedan_registrados(self):
+        # Es la evidencia de que el límite del punto 3 operó. Sin ella, "QA no
+        # exigió de más" no se puede comprobar.
+        casos = [{"criterio": 99, "expresion": "x", "espera": "y"}]
+        run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "qa_ejecutado")
+        self.assertEqual(len(evento["payload"]["descartados"]), 1)
+        self.assertTrue(evento["payload"]["cumple"])
+
+    def test_la_metrica_va_en_lo_que_somete_el_gate_de_salida(self):
+        run, _, _ = self.correr_con_qa(qa_que_devuelve([]), TRES_UNIDADES)
+        somete = self.de_tipo(run, "gate_abierto")[1]["payload"]["somete"]
+        self.assertEqual(
+            [(u["unidad"], u["no_verificables"]) for u in somete["unidades"]],
+            [("U1", 1), ("U2", 1), ("U3", 1)],
+        )
+
+    def test_sin_qa_la_metrica_es_none_y_no_cero(self):
+        # Cero significa "se comprobó todo". Que QA no haya corrido es otra cosa
+        # y el Gate tiene que poder distinguirlas.
+        run, _, _ = self.correr_cadena()
+        somete = self.de_tipo(run, "gate_abierto")[1]["payload"]["somete"]
+        self.assertIsNone(somete["unidades"][0]["no_verificables"])
+
+    # --- el bucle de corrección --------------------------------------------
+
+    def test_un_incumplimiento_sustantivo_manda_a_reintentar_por_el_mismo_bucle(self):
+        self.ejecutor_que_devuelve("lo que no se esperaba")
+        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        registro = []
+        run, _, _ = self.correr_con_qa(
+            qa_que_devuelve(casos), developer=developer_que_corrige(registro)
+        )
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+
+        # Dos vueltas de QA: la que rechazó y la de después de corregir.
+        eventos = self.de_tipo(run_developer, "qa_ejecutado")
+        self.assertEqual([e["payload"]["cumple"] for e in eventos], [False, False])
+        # El Developer volvió a producir con los incumplimientos de QA en la mano,
+        # en la misma forma que los estructurales.
+        segundos = registro[-1]["incumplimientos"]
+        self.assertEqual(set(segundos[0]), {"regla", "archivo", "detalle"})
+
+    def test_agotar_el_techo_del_developer_escala_y_detiene_el_plan(self):
+        self.ejecutor_que_devuelve("lo que no se esperaba")
+        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
+        (detenido,) = self.de_tipo(run, "plan_detenido")
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (escalado,) = self.de_tipo(run_developer, "escalamiento")
+        self.assertEqual(escalado["payload"]["motivo"], "escalado_por_iteraciones")
+
+    def test_qa_no_trae_techo_de_iteraciones_propio(self):
+        """El que reintenta es el Developer; el techo que lo acota es el suyo."""
+        self.ejecutor_que_devuelve("lo que no se esperaba")
+        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (techos,) = self.de_tipo(run_developer, "techos_efectivos")
+        self.assertEqual(
+            len(self.de_tipo(run_developer, "qa_ejecutado")),
+            techos["payload"]["iteraciones"],
+        )
+
+    def test_qa_que_cumple_cierra_la_unidad(self):
+        self.ejecutor_que_devuelve("ok")
+        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "qa_ejecutado")
+        self.assertTrue(evento["payload"]["cumple"])
+        self.assertEqual(evento["payload"]["no_verificables"], [])
+        self.assertEqual(self.de_tipo(run, "plan_detenido"), [])
+
+    # --- lo que no se da por bueno -----------------------------------------
+
+    def test_sin_frontera_escala_en_vez_de_aprobar(self):
+        def sin_frontera(deposito, expresion):
+            raise verificacion_sustantiva.ejecutor.SinFrontera("no hay sandbox acá")
+
+        verificacion_sustantiva.ejecutor.ejecutar_expresion = sin_frontera
+        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (escalado,) = self.de_tipo(run_developer, "escalamiento")
+        self.assertEqual(escalado["payload"]["motivo"], "escalado_por_sin_frontera")
+        # No quedó registrada ninguna verificación: nadie miró la unidad.
+        self.assertEqual(self.de_tipo(run_developer, "qa_ejecutado"), [])
+        self.assertEqual(len(self.de_tipo(run, "plan_detenido")), 1)
+
+    def test_un_fallo_de_infraestructura_del_productor_escala(self):
+        def se_cae(unidad, plan, entrega, deposito, contexto_vault):
+            raise grafo.FalloDeInfraestructura("el proveedor no respondió", costo=0.02)
+
+        run, _, _ = self.correr_con_qa(se_cae)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (fallo,) = self.de_tipo(run_developer, "fallo_infraestructura")
+        self.assertEqual(fallo["payload"]["etapa"], "qa")
+        (escalado,) = self.de_tipo(run_developer, "escalamiento")
+        self.assertEqual(escalado["payload"]["motivo"], "escalado_por_infraestructura")
+
+    def test_el_costo_de_qa_se_registra_contra_el_mismo_techo(self):
+        def con_costo(unidad, plan, entrega, deposito, contexto_vault):
+            return [], 0.07
+
+        run, _, _ = self.correr_con_qa(con_costo)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        consumos = [
+            e["payload"]["costo"]
+            for e in self.de_tipo(run_developer, "consumo_registrado")
+        ]
+        self.assertIn(0.07, consumos)
 
 
 if __name__ == "__main__":

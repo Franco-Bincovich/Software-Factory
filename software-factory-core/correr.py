@@ -37,6 +37,7 @@ import cadena  # noqa: E402
 import grafo  # noqa: E402
 import productor  # noqa: E402
 import productor_entrega  # noqa: E402
+import productor_qa  # noqa: E402
 from agent_loader import CargaFallida, cargar  # noqa: E402
 from intake import PedidoRechazado  # noqa: E402
 from operational_state import (  # noqa: E402
@@ -238,6 +239,28 @@ def producir_entrega_stub(unidad, contexto_unidades, entrega_anterior, incumplim
     }
 
 
+def producir_qa_stub(unidad, plan, entrega, deposito, contexto_vault):
+    """QA de relleno. **No propone ningún caso, y eso es lo honesto.**
+
+    Los otros dos stubs pueden fabricar un artefacto de relleno porque la forma
+    del artefacto está fijada por un contrato: un plan con una unidad, una entrega
+    con cuatro archivos. Un caso de prueba no: derivarlo exige leer un criterio
+    escrito en prosa y traducirlo a una expresión ejecutable, que es justamente lo
+    que sin modelo no se puede hacer.
+
+    Fabricar casos que pasen —contra el entregable del stub del Developer, que se
+    conoce— daría una corrida en verde diciendo "los criterios se cumplen" sin que
+    nadie los haya comprobado. Ese es el único resultado que un stub de QA no
+    puede dar.
+
+    Devolviendo la lista vacía, la verificación sustantiva marca **todos** los
+    criterios como `no_verificable_mecanicamente` y la corrida queda registrada
+    diciendo exactamente eso. Como efecto secundario, `--stub` no necesita
+    frontera de kernel: sin casos no se ejecuta nada.
+    """
+    return [], COSTO_STUB
+
+
 def _store(ruta):
     return OperationalState() if ruta is None else OperationalState(ruta)
 
@@ -306,6 +329,26 @@ def elegir_productor_de_entregas(modo, ruta_vault):
     return productor_entrega.crear_productor(api_key, modelo, ruta_vault), 0.0
 
 
+def elegir_productor_de_qa(modo, ruta_vault):
+    """Devuelve `qa_fn`, sin costo por defecto: los dos declaran el suyo.
+
+    Es la diferencia con los otros dos `elegir_`: el stub del plan y el de la
+    entrega devuelven el artefacto pelado y el costo nominal lo pone el grafo.
+    Acá los dos productores devuelven `(casos, costo)`, así que un costo por
+    defecto sería un número que nunca se usa — y un techo alimentado con números
+    que nadie mira no es un techo.
+
+    El modo no se elige por separado: si el plan y la entrega salieron del
+    modelo, los casos de prueba también, y al revés. Tres modos distintos en una
+    misma corrida darían una entrega que nadie puede interpretar después.
+    """
+    if modo == grafo.MODO_STUB:
+        return producir_qa_stub
+
+    api_key, modelo = _credencial_y_modelo()
+    return productor_qa.crear_productor(api_key, modelo, ruta_vault)
+
+
 class SinCredencial(RuntimeError):
     """No hay `ANTHROPIC_API_KEY` y no se pidió el stub."""
 
@@ -322,11 +365,15 @@ class DeveloperContradictorio(RuntimeError):
     """La reanudación pide una definición de Developer y la corrida abrió con otra."""
 
 
+class QAContradictorio(RuntimeError):
+    """La reanudación pide una definición de QA y la corrida abrió con otra, o sin ninguna."""
+
+
 EVENTO_CADENA = "cadena_fijada"
 MOTIVO_SOLO_PLAN = "se pidió --solo-plan: el Requirement Agent corre solo"
 
 
-def hecho_de_cadena(ruta_developer):
+def hecho_de_cadena(ruta_developer, ruta_qa=None):
     """El hecho que fija si esta corrida tiene cadena. Se escribe siempre.
 
     Tener Developer o no decide si la fábrica hace la mitad de su trabajo, y por
@@ -335,13 +382,19 @@ def hecho_de_cadena(ruta_developer):
     no se puede explicar sola — leyendo sus eventos no se distingue "nadie pidió
     cadena" de "se pidió y no se armó".
 
-    La ruta se guarda relativa al repositorio, que es donde vive la definición
-    —ADR-014 punto 3—. Una definición identificada por su ruta absoluta solo se
-    puede volver a encontrar en la máquina que corrió.
+    `qa` está siempre, en `None` cuando no la hubo. Una corrida sin verificación
+    sustantiva y una con ella no son la misma corrida: en la primera "la unidad
+    entregó" significa que pasó la forma, y en la segunda que además se ejecutó
+    contra los criterios del plan. Sin el dato, las dos se leen igual.
+
+    Las rutas se guardan relativas al repositorio, que es donde viven las
+    definiciones —ADR-014 punto 3—. Una definición identificada por su ruta
+    absoluta solo se puede volver a encontrar en la máquina que corrió.
     """
+    qa = relativa_a(ruta_qa, RAIZ_REPO) if ruta_qa else None
     if ruta_developer:
-        return {"developer": relativa_a(ruta_developer, RAIZ_REPO)}
-    return {"developer": None, "motivo": MOTIVO_SOLO_PLAN}
+        return {"developer": relativa_a(ruta_developer, RAIZ_REPO), "qa": qa}
+    return {"developer": None, "qa": qa, "motivo": MOTIVO_SOLO_PLAN}
 
 
 def cadena_de(store, run_id):
@@ -352,25 +405,33 @@ def cadena_de(store, run_id):
     return None
 
 
+def _registrada(hecho, clave):
+    """La ruta que el hecho guarda bajo esa clave, expandida y absoluta.
+
+    Lo registrado está relativo al repositorio y acá se expande: quien reanuda
+    necesita una ruta que se pueda abrir, no una que se pueda comparar.
+    """
+    ruta = hecho.get(clave)
+    return None if ruta is None else str(absoluta_desde(ruta, RAIZ_REPO))
+
+
+def _misma_ruta(una, otra):
+    """Para que la misma definición nombrada de dos formas no parezca contradicción."""
+    return os.path.abspath(str(una)) == os.path.abspath(str(otra))
+
+
 def developer_para_reanudar(store, run_id, declarada):
     """La definición con la que se retoma: la que la corrida registró.
 
     Los flags no eligen acá; a lo sumo contradicen. Reanudar con otra definición
     —o pedir cadena en una corrida abierta con `--solo-plan`— cambiaría en
     silencio quién ejecutó las unidades.
-
-    Lo registrado está relativo al repositorio y acá se expande: quien reanuda
-    necesita una ruta que se pueda abrir, no una que se pueda comparar. La
-    comparación con la declarada también se hace expandida, para que la misma
-    definición nombrada de dos formas no parezca una contradicción.
     """
     hecho = cadena_de(store, run_id)
     if hecho is None:
         return declarada
 
-    registrada = hecho.get("developer")
-    if registrada is not None:
-        registrada = str(absoluta_desde(registrada, RAIZ_REPO))
+    registrada = _registrada(hecho, "developer")
     if declarada is None:
         return registrada
     if registrada is None:
@@ -380,7 +441,7 @@ def developer_para_reanudar(store, run_id, declarada):
             "y no se cambia al reanudarla. Para ejecutar unidades, abrí una "
             "corrida nueva." % run_id
         )
-    if os.path.abspath(str(declarada)) != os.path.abspath(str(registrada)):
+    if not _misma_ruta(declarada, registrada):
         raise DeveloperContradictorio(
             "la corrida %s se abrió con la definición de Developer '%s' y se la "
             "está reanudando con '%s'. Con qué corre la cadena es un hecho de la "
@@ -390,7 +451,44 @@ def developer_para_reanudar(store, run_id, declarada):
     return registrada
 
 
-def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, conservar, modo):
+def qa_para_reanudar(store, run_id, declarada):
+    """La definición de QA con la que se retoma: la que la corrida registró.
+
+    Mismo criterio que `developer_para_reanudar`, por una razón propia: encender
+    la verificación sustantiva a mitad de una corrida dejaría unas unidades
+    verificadas contra los criterios del plan y otras no, sin nada en el registro
+    que diga cuáles. El Gate de salida recibiría una tabla que no cubre lo que
+    parece cubrir.
+
+    Una corrida anterior a que QA existiera no tiene la clave `qa` en su hecho de
+    cadena, y eso se lee como lo que es: se abrió sin verificación sustantiva.
+    """
+    hecho = cadena_de(store, run_id)
+    if hecho is None:
+        return declarada
+
+    registrada = _registrada(hecho, "qa")
+    if declarada is None:
+        return registrada
+    if registrada is None:
+        raise QAContradictorio(
+            "la corrida %s se abrió sin --definicion-qa y se la está reanudando "
+            "con él. Tener verificación sustantiva o no es un hecho de la "
+            "corrida: encenderla a mitad dejaría unas unidades verificadas y "
+            "otras no. Para verificar, abrí una corrida nueva." % run_id
+        )
+    if not _misma_ruta(declarada, registrada):
+        raise QAContradictorio(
+            "la corrida %s se abrió con la definición de QA '%s' y se la está "
+            "reanudando con '%s'. Con qué se verifica es un hecho de la corrida. "
+            "Reanudala sin --definicion-qa y se retoma con la registrada."
+            % (run_id, registrada, declarada)
+        )
+    return registrada
+
+
+def armar_cadena(store, ruta_definicion_developer, ruta_definicion_qa, raiz_trabajo,
+                 ruta_vault, conservar, modo):
     """Devuelve `(ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn)`.
 
     Los tres son `None` si no hay definición de Developer: sin cadena la corrida
@@ -404,11 +502,19 @@ def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, con
     El modo de la cadena es el mismo que el del plan y no se elige por separado:
     una corrida no produce el plan contra el modelo y el código con el stub, ni
     al revés. Es un solo hecho de la corrida.
+
+    La definición de QA es opcional y viaja junto con su productor: `cadena` se
+    niega a armar el nodo con una sola de las dos. Sin ella la cadena es la de
+    V0.2 exactamente — el grafo del Developer ni siquiera tiene nodo `qa`—.
     """
     if not ruta_definicion_developer:
         return None, None, None
     definicion = cargar(ruta_definicion_developer)
     producir_entrega_fn, costo = elegir_productor_de_entregas(modo, ruta_vault)
+    qa_fn, definicion_qa = None, None
+    if ruta_definicion_qa:
+        definicion_qa = cargar(ruta_definicion_qa)
+        qa_fn = elegir_productor_de_qa(modo, ruta_vault)
     nodo = cadena.nodo_ejecutar_unidades(
         store,
         definicion,
@@ -416,6 +522,8 @@ def armar_cadena(store, ruta_definicion_developer, raiz_trabajo, ruta_vault, con
         raiz_trabajo or cadena.RAIZ_TRABAJO_POR_DEFECTO,
         ruta_vault,
         costo,
+        qa_fn=qa_fn,
+        definicion_qa=definicion_qa,
     )
     return (
         nodo,
@@ -498,6 +606,13 @@ def main(argv=None):
         "verificado.",
     )
     parser.add_argument(
+        "--definicion-qa",
+        dest="definicion_qa",
+        help="Ruta a la Agent Definition del QA Agent. Con ella cada unidad se "
+        "verifica ejecutando los criterios de aceptación del plan sobre el "
+        "depósito de la entrega; sin ella se verifica solo la forma.",
+    )
+    parser.add_argument(
         "--trabajo",
         help="Raíz donde se crea el directorio de trabajo descartable de la corrida.",
     )
@@ -564,6 +679,20 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 2
+    if args.definicion_qa and args.solo_plan:
+        print(
+            "--definicion-qa y --solo-plan piden cosas opuestas: QA verifica "
+            "entregas ejecutándolas, y con --solo-plan no hay ninguna.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.definicion_qa and not (args.definicion_developer or args.reanudar):
+        print(
+            "--definicion-qa exige --definicion-developer: QA verifica lo que el "
+            "Developer entrega, así que sin cadena no tiene sobre qué correr.",
+            file=sys.stderr,
+        )
+        return 2
     if (
         not (args.reanudar or args.desde_corrida)
         and not args.definicion_developer
@@ -594,9 +723,11 @@ def main(argv=None):
                 ruta_developer = developer_para_reanudar(
                     store, args.reanudar, args.definicion_developer
                 )
+                ruta_qa = qa_para_reanudar(store, args.reanudar, args.definicion_qa)
             else:
                 modo = declarado or grafo.MODO_MODELO
                 ruta_developer = args.definicion_developer
+                ruta_qa = args.definicion_qa
             if args.desde_corrida:
                 # Una corrida heredera no produce plan: no hace falta productor
                 # de planes. El nombre del modelo sí, como evidencia.
@@ -606,10 +737,10 @@ def main(argv=None):
             else:
                 producir_fn, costo, nombre_modelo = elegir_productor(modo, args.vault)
             ejecutar_unidades_fn, borrar_trabajo_fn, materializar_fn = armar_cadena(
-                store, ruta_developer, args.trabajo, args.vault,
+                store, ruta_developer, ruta_qa, args.trabajo, args.vault,
                 args.conservar_trabajo, modo,
             )
-        except (ModoContradictorio, DeveloperContradictorio) as error:
+        except (ModoContradictorio, DeveloperContradictorio, QAContradictorio) as error:
             print("error: %s" % error, file=sys.stderr)
             return 2
         except (
@@ -664,7 +795,7 @@ def main(argv=None):
                 run_id,
                 EVENTO_CADENA,
                 "plataforma",
-                hecho_de_cadena(args.definicion_developer),
+                hecho_de_cadena(args.definicion_developer, ruta_qa),
             )
             print(run_id)
             return 0
@@ -697,7 +828,9 @@ def main(argv=None):
         # corrida nueva siempre frena en el Gate de entrada, así que el hecho
         # queda escrito mucho antes de que corra la primera unidad. Se escribe
         # haya cadena o no: la ausencia también es una decisión y se anota.
-        store.append(run_id, EVENTO_CADENA, "plataforma", hecho_de_cadena(ruta_developer))
+        store.append(
+            run_id, EVENTO_CADENA, "plataforma", hecho_de_cadena(ruta_developer, ruta_qa)
+        )
         print(run_id)
         return 0
 

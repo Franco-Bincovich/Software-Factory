@@ -21,9 +21,11 @@ sys.path.insert(0, str(RAIZ / "src"))
 sys.path.insert(0, str(RAIZ / "tests"))
 sys.path.insert(0, str(RAIZ))
 
+import cadena  # noqa: E402
 import gates  # noqa: E402
 import grafo  # noqa: E402
 import operational_state  # noqa: E402
+import verificacion_sustantiva  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
 
 import correr  # noqa: E402
@@ -55,6 +57,10 @@ class BaseCLI(unittest.TestCase):
         self.ruta_developer = raiz / "developer.md"
         self.ruta_developer.write_text(
             definicion_texto("developer-agente-de-prueba", 1, 10, 3), encoding="utf-8"
+        )
+        self.ruta_qa = raiz / "qa.md"
+        self.ruta_qa.write_text(
+            definicion_texto("qa-agente-de-prueba", 1, 5, 1), encoding="utf-8"
         )
         self.ruta_db = raiz / "factory.db"
         self.ruta_checkpointer = raiz / "checkpoints.db"
@@ -116,16 +122,30 @@ class BaseCLI(unittest.TestCase):
         finally:
             almacen.cerrar()
 
-    def hasta_el_gate_de_salida(self):
+    def hasta_el_gate_de_salida(self, *flags):
         """Abre una corrida con cadena, aprueba la entrada y la reanuda."""
         codigo, run_id, error = self.nueva(
-            "--definicion-developer", str(self.ruta_developer)
+            "--definicion-developer", str(self.ruta_developer), *flags
         )
         self.assertEqual(codigo, 0, error)
         self.aprobar(run_id, "entrada")
         codigo, _, error = self.cli("--reanudar", run_id, "--stub")
         self.assertEqual(codigo, 0, error)
         return run_id
+
+    def eventos_de_developer(self, run_id, tipo):
+        """Los eventos de ese tipo en las corridas de Developer de la cadena.
+
+        QA escribe en la corrida de la unidad, no en la del pedido: son dos
+        corridas encadenadas y `qa_ejecutado` es un hecho de la de abajo.
+        """
+        almacen = self.store()
+        return [
+            evento
+            for run_developer in cadena.corridas_de_developer(almacen, run_id)
+            for evento in almacen.leer_run(run_developer)
+            if evento["tipo"] == tipo
+        ]
 
 
 # --- 1 — la ausencia deja de ser una decisión --------------------------------
@@ -298,6 +318,154 @@ class RegimenDeclaradoYCumplido(BaseCLI):
         self.assertEqual(incumplido["payload"]["faltan"], ["salida"])
         self.assertEqual(incumplido["payload"]["declarados"], ["entrada", "salida"])
         self.assertEqual(self.de_tipo(run_id, "run_cerrada"), [])
+
+
+# --- 5 — encender la verificación sustantiva — ADR-018 ----------------------
+
+
+class EncenderQA(BaseCLI):
+    """`--definicion-qa` es lo único que enciende QA, y es un hecho de la corrida.
+
+    Que sea apagable no es una concesión: la medición de ADR-018 da 2 criterios
+    ejecutables de 11 en el plan actual, así que una corrida con QA escala casi
+    todo mientras el Requirement Agent no escriba criterios comprobables. Poder
+    correr sin QA es lo que permite corregirlo sin quedarse sin fábrica.
+    """
+
+    def con_qa(self):
+        return self.hasta_el_gate_de_salida("--definicion-qa", str(self.ruta_qa))
+
+    # --- el flag es lo que enciende -----------------------------------------
+
+    def test_sin_el_flag_ninguna_unidad_pasa_por_qa(self):
+        """La cadena de V0.2 sigue siendo exactamente la de V0.2."""
+        run_id = self.hasta_el_gate_de_salida()
+        self.assertTrue(self.de_tipo(run_id, "unidad_entregada"))
+        self.assertEqual(self.eventos_de_developer(run_id, "qa_ejecutado"), [])
+
+    def test_con_el_flag_cada_unidad_entregada_pasa_por_qa(self):
+        run_id = self.con_qa()
+        entregadas = [e["payload"]["unidad"] for e in self.de_tipo(run_id, "unidad_entregada")]
+        verificadas = [
+            e["payload"]["unidad"] for e in self.eventos_de_developer(run_id, "qa_ejecutado")
+        ]
+        self.assertEqual(entregadas, ["U1"])
+        self.assertEqual(verificadas, entregadas)
+
+    def test_qa_corre_despues_del_verificador_estructural(self):
+        """El orden importa: gastar QA sobre una entrega deforme es pagar de más."""
+        run_id = self.con_qa()
+        (run_developer,) = cadena.corridas_de_developer(self.store(), run_id)
+        tipos = [e["tipo"] for e in self.store().leer_run(run_developer)]
+        self.assertLess(tipos.index("verificacion_ejecutada"), tipos.index("qa_ejecutado"))
+
+    def test_la_corrida_con_qa_cierra_entregada(self):
+        run_id = self.con_qa()
+        self.aprobar(run_id, "salida")
+        codigo, _, error = self.cli("--reanudar", run_id, "--stub")
+        self.assertEqual(codigo, 0, error)
+        (cerrada,) = self.de_tipo(run_id, "run_cerrada")
+        self.assertEqual(cerrada["payload"]["resultado"], "entregado")
+
+    # --- el hecho de cadena -------------------------------------------------
+
+    def test_registra_la_definicion_de_qa_como_hecho(self):
+        run_id = self.con_qa()
+        (hecho,) = self.de_tipo(run_id, correr.EVENTO_CADENA)
+        self.assertEqual(
+            Path(correr.absoluta_desde(hecho["payload"]["qa"], correr.RAIZ_REPO)),
+            Path(self.ruta_qa),
+        )
+
+    def test_la_definicion_de_qa_se_registra_en_relativo(self):
+        """ADR-014 punto 3: ningún evento nuevo escribe una ruta absoluta."""
+        run_id = self.con_qa()
+        (hecho,) = self.de_tipo(run_id, correr.EVENTO_CADENA)
+        self.assertFalse(Path(hecho["payload"]["qa"]).is_absolute())
+
+    def test_la_ausencia_de_qa_tambien_queda_registrada(self):
+        """Sin el dato, una corrida verificada y una sin verificar se leen igual."""
+        run_id = self.hasta_el_gate_de_salida()
+        (hecho,) = self.de_tipo(run_id, correr.EVENTO_CADENA)
+        self.assertIn("qa", hecho["payload"])
+        self.assertIsNone(hecho["payload"]["qa"])
+
+    # --- reanudar: los flags no eligen, a lo sumo contradicen ---------------
+
+    def test_se_reanuda_sin_repetir_el_flag(self):
+        run_id = self.con_qa()
+        self.assertTrue(self.eventos_de_developer(run_id, "qa_ejecutado"))
+
+    def test_no_se_reanuda_encendiendo_qa(self):
+        codigo, run_id, error = self.nueva(
+            "--definicion-developer", str(self.ruta_developer)
+        )
+        self.assertEqual(codigo, 0, error)
+        self.aprobar(run_id, "entrada")
+        codigo, _, error = self.cli(
+            "--reanudar", run_id, "--stub", "--definicion-qa", str(self.ruta_qa)
+        )
+        self.assertEqual(codigo, 2)
+        self.assertIn("se abrió sin --definicion-qa", error)
+
+    def test_no_se_reanuda_con_otra_definicion_de_qa(self):
+        codigo, run_id, error = self.nueva(
+            "--definicion-developer", str(self.ruta_developer),
+            "--definicion-qa", str(self.ruta_qa),
+        )
+        self.assertEqual(codigo, 0, error)
+        self.aprobar(run_id, "entrada")
+
+        otra = Path(self._dir.name) / "otro-qa.md"
+        otra.write_text(definicion_texto("otro-qa", 1, 5, 1), encoding="utf-8")
+        codigo, _, error = self.cli(
+            "--reanudar", run_id, "--stub", "--definicion-qa", str(otra)
+        )
+        self.assertEqual(codigo, 2)
+        self.assertIn("se abrió con la definición de QA", error)
+
+    # --- errores de uso -----------------------------------------------------
+
+    def test_qa_con_solo_plan_es_error_de_uso(self):
+        codigo, _, error = self.nueva("--solo-plan", "--definicion-qa", str(self.ruta_qa))
+        self.assertEqual(codigo, 2)
+        self.assertIn("cosas opuestas", error)
+
+    def test_qa_sin_developer_es_error_de_uso(self):
+        codigo, _, error = self.nueva("--definicion-qa", str(self.ruta_qa))
+        self.assertEqual(codigo, 2)
+        self.assertIn("--definicion-qa exige --definicion-developer", error)
+
+    # --- qué hace el stub, dicho en voz alta --------------------------------
+
+    def test_el_stub_de_qa_no_propone_casos_y_la_tabla_lo_dice(self):
+        """Un stub que fabricara casos que pasan daría verde sin haber mirado."""
+        run_id = self.con_qa()
+        (evento,) = self.eventos_de_developer(run_id, "qa_ejecutado")
+        payload = evento["payload"]
+        self.assertTrue(payload["tabla"])
+        self.assertEqual(
+            {fila["veredicto"] for fila in payload["tabla"]},
+            {verificacion_sustantiva.NO_VERIFICABLE},
+        )
+        self.assertEqual(
+            payload["no_verificables"], [fila["regla"] for fila in payload["tabla"]]
+        )
+        self.assertEqual(payload["incumplimientos"], [])
+
+    def test_el_stub_de_qa_no_necesita_frontera_de_kernel(self):
+        """Sin casos no se ejecuta nada, así que `--stub` corre en cualquier máquina."""
+        original = verificacion_sustantiva.ejecutor.ejecutar_expresion
+
+        def no_deberia_correr(*args, **kwargs):
+            raise AssertionError("el stub de QA no tiene que ejecutar nada")
+
+        verificacion_sustantiva.ejecutor.ejecutar_expresion = no_deberia_correr
+        try:
+            run_id = self.con_qa()
+        finally:
+            verificacion_sustantiva.ejecutor.ejecutar_expresion = original
+        self.assertTrue(self.eventos_de_developer(run_id, "qa_ejecutado"))
 
 
 class VerificarRegimen(unittest.TestCase):
