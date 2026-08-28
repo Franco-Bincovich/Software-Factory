@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Demo — esEmailValido (U1)</title>
+<script src="./src/validar-email.js"></script>
+
+<h1>Validar un email</h1>
+<input id="entrada" placeholder="nombre@dominio.com">
+<button id="validar">Validar</button>
+<p id="resultado"></p>
+
+<script>
+  document.getElementById("validar").addEventListener("click", () => {
+    const r = esEmailValido(document.getElementById("entrada").value);
+    document.getElementById("resultado").textContent =
+      r ? "Válido" : "Inválido";
+  });
+</script>

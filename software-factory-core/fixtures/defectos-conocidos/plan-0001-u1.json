@@ -1,0 +1,19 @@
+{
+  "artefacto_esperado": "Archivo de código fuente con la función de validación de email, depositado en el repositorio del proyecto.",
+  "criterios": [
+    {
+      "condicion_observable": "Dado el input 'usuario@dominio.com', se invoca la función y se observa su valor de retorno.",
+      "procedimiento": "Ejecutar la función con el string 'usuario@dominio.com' como argumento y verificar que el valor de retorno sea true.",
+      "resultado_esperado": "La función retorna true para la dirección válida 'usuario@dominio.com'."
+    },
+    {
+      "condicion_observable": "Dado el input 'usuario@dominio' (sin extensión de dominio), se invoca la función y se observa su valor de retorno.",
+      "procedimiento": "Ejecutar la función con el string 'usuario@dominio' como argumento y verificar que el valor de retorno sea false.",
+      "resultado_esperado": "La función retorna false para la dirección inválida 'usuario@dominio'."
+    }
+  ],
+  "dependencias": [],
+  "enunciado": "Implementar una función que determine si una cadena de texto es una dirección de email válida según el formato estándar usuario@dominio.tld.",
+  "id": "U1",
+  "rastreo": "Una función que valide si un texto es una dirección de email válida, con sus pruebas unitarias"
+}
