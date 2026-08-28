@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Demo - U1</title>
+<script src="./src/u1.js"></script>
+
+<h1>U1</h1>
+<input id="entrada" placeholder="dato">
+<button id="resolver">Resolver</button>
+<p id="resultado"></p>
+
+<script>
+  document.getElementById("resolver").addEventListener("click", () => {
+    const r = resolverU1(document.getElementById("entrada").value);
+    document.getElementById("resultado").textContent =
+      r.ok ? "Resuelto: " + r.valor : "Rechazado - " + r.motivo;
+  });
+</script>

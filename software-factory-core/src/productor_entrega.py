@@ -115,7 +115,14 @@ V3 — `pruebas.html` invoca la función de la lógica por su nombre.
 
 V4 — Los veredictos de `pruebas.html` salen de ejecutar la función, nunca de
 texto fijo. Un veredicto escrito en el HTML estático se rechaza, y un literal
-asignado sin depender del resultado también.\
+asignado sin depender del resultado también.
+
+V5 — La entrega se resuelve sola: no hay nada que instalar ni que bajar. Sin
+`package.json` ni lockfiles. Sin `node_modules`. Todo `require` es de un builtin
+de Node —`node:test`, `node:assert`, `node:path`— o de una ruta relativa que
+queda dentro del directorio de la unidad; un nombre de paquete se rechaza. Sin
+`import` de paquete. Y el `src` de cada `<script>` es una ruta relativa dentro
+del directorio: nunca una URL, nunca un CDN.\
 """
 
 LOS_CUATRO_ENTREGABLES = """\

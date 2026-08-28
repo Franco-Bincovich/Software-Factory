@@ -48,7 +48,7 @@ REGLAS = (
     "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8",
     "R1", "R3", "R8",
     "P1", "P2", "P3",
-    "V1", "V2", "V3", "V4",
+    "V1", "V2", "V3", "V4", "V5",
 )
 
 
@@ -377,6 +377,7 @@ def verificar(entrega, plan, esquema=None):
         incumplimientos += ins.r1_tamano(ruta, contenido)
         incumplimientos += ins.r3_patrones_prohibidos(ruta, contenido)
         incumplimientos += ins.prohibiciones(ruta, contenido)
+        incumplimientos += ins.v5_autocontencion(ruta, contenido)
 
     if entregables["pruebas"] is not None:
         incumplimientos += ins.r8_tests(
