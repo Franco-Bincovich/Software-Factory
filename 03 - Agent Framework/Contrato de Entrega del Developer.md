@@ -15,7 +15,7 @@ aliases: [Contrato de Entrega del Developer, Entrega del Developer, Entrega]
 Artefacto de construcción de V0.2. Es el equivalente para código del [[Contrato
 del Plan de Trabajo]]: aquel fija qué forma tiene lo que devuelve el Requirement
 Agent, éste fija qué forma tiene lo que devuelve el Developer Agent. Deriva de
-ADR-003, ADR-005 y ADR-009. No forma parte de los diecisiete documentos del
+ADR-003, ADR-005 y ADR-009. No forma parte de los dieciocho documentos del
 índice de Fase 0: es un contrato operativo, no un documento normativo de diseño
 estratégico.
 

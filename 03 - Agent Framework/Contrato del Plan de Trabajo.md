@@ -13,7 +13,7 @@ aliases: [Contrato del Plan de Trabajo, Plan de Trabajo]
 # Contrato del Plan de Trabajo
 
 Artefacto de construcción de V0.1, tarea T6. Deriva de ADR-005. No forma parte
-de los diecisiete documentos del índice de Fase 0: es un contrato operativo, no
+de los dieciocho documentos del índice de Fase 0: es un contrato operativo, no
 un documento normativo de diseño estratégico.
 
 ## Propósito

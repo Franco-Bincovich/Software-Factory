@@ -74,8 +74,8 @@ REGLAS_T7 = """\
 El verificador estructural (T7) evalúa siete reglas sobre el plan. Un plan que
 incumple cualquiera de ellas se rechaza y hay que corregirlo.
 
-Regla 0 — El plan valida contra el esquema JSON. Si no valida, no se evalúa
-nada más.
+Antes de las siete comprueba el esquema JSON. Es una compuerta, no una de ellas:
+si el plan no valida, el verificador devuelve `regla 0` y no evalúa nada más.
 
 Regla 1 — Toda unidad de trabajo declara al menos un Acceptance Criterion.
 
