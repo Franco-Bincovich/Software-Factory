@@ -1,0 +1,14 @@
+{
+  "artefacto_esperado": "Módulo de código fuente con la función de validación de email, depositado en el repositorio del proyecto en la ruta acordada con el Developer Agent.",
+  "criterios": [
+    {
+      "condicion_observable": "Se invoca la función con el conjunto de casos de prueba: 5 cadenas que son direcciones de email válidas segun el formato local@dominio.tld (ej: 'a@b.com', 'juan.perez@empresa.com.ar') y 5 cadenas que no lo son (ej: 'texto-sin-arroba', '@dominio.com', 'usuario@', 'usuario@dominio', 'usuario @dominio.com').",
+      "procedimiento": "Ejecutar la función sobre cada una de las 10 cadenas del conjunto de prueba, registrar el valor devuelto para cada una y compararlo uno a uno contra el resultado esperado indicado en esta lista. Se aprueba solo si los 10 resultados coinciden exactamente.",
+      "resultado_esperado": "La función devuelve true para las 5 cadenas válidas y false para las 5 cadenas inválidas, sin excepción."
+    }
+  ],
+  "dependencias": [],
+  "enunciado": "Implementar una función que reciba una cadena de texto y determine si es una dirección de email sintácticamente válida, devolviendo un valor booleano.",
+  "id": "U1",
+  "rastreo": "Una función que valide si un texto es una dirección de email válida"
+}

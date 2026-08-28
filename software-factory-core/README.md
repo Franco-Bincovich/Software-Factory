@@ -287,6 +287,16 @@ nada. Con la lista vacía, todos los criterios salen `no_verificable_mecanicamen
 y la corrida queda diciendo exactamente eso — y, de paso, `--stub` no necesita
 frontera de kernel.
 
+**Qué de esto está medido contra defectos y qué falta.**
+`test_qa_contra_defectos.py` corre QA sobre dos entregas reales del registro:
+acepta las dos, que son correctas, y rechaza cuatro defectos sembrados nombrando
+el criterio que cada uno rompió y no otro. Lo que ahí **no** se prueba es que el
+prompt de `productor_qa` sepa derivar los casos leyendo la prosa del criterio: los
+casos de esos tests están transcriptos del `procedimiento` que el plan escribió.
+Esa medición necesita una corrida con modelo y está pendiente. El encabezado de
+ese archivo explica también por qué el único rechazo real del `factory.db` no
+sirve como caso de QA.
+
 ## Heredar un plan ya verificado
 
 Un plan que se produjo y se pagó no tiene por qué volver a producirse para poder
@@ -618,7 +628,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Trescientos setenta y siete tests, uno por cada fila de los criterios de
+Trescientos noventa y tres tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -643,6 +653,7 @@ después y las piezas de V0.2:
 | `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
 | `test_verificacion_sustantiva.py` | 22 | el anclaje, el veredicto por criterio y el invariante de la superficie de rechazo contra salidas fabricadas |
 | `test_productor_qa.py` | 27 | el productor de casos de prueba, con cliente falso, y la Agent Definition del QA Agent |
+| `test_qa_contra_defectos.py` | 16 | QA contra dos entregas reales del registro: acepta las correctas y rechaza cuatro defectos sembrados nombrando el criterio que cada uno rompió |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.
