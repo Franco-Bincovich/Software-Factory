@@ -250,6 +250,20 @@ def _checkpointer(ruta):
 
 def _credencial_y_modelo():
     """La credencial y el nombre del modelo, del entorno. Los dos productores usan esto."""
+    # Una variable definida pero vacía no es configuración: es un hueco. Sin
+    # esto `load_dotenv` la respeta —comprueba presencia, no contenido— y el
+    # `.env` queda ignorado en silencio. Pasó con `ANTHROPIC_API_KEY=""`
+    # exportada en el shell: la Fábrica moría diciendo "no configurada" con la
+    # key escrita en el `.env`, a un palmo. Se borran antes de leer para que
+    # `load_dotenv` las trate como ausentes, que es lo que el `.strip()` de
+    # abajo ya da por sentado.
+    #
+    # No se invierte la precedencia con `override=True`: en producción y en CI
+    # no hay `.env` y el entorno *es* la configuración. Un `.env` local que le
+    # gane a la credencial inyectada sería la misma falla, del lado peor.
+    for variable in ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"):
+        if not os.environ.get(variable, "").strip():
+            os.environ.pop(variable, None)
     load_dotenv(RAIZ / ".env")
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
