@@ -7,7 +7,7 @@ un falso negativo.
 
 **Los defectos se siembran mutando la fixture limpia, no con un archivo por
 defecto.** Es una desviación deliberada del patrón de `test_verificador.py`: una
-entrega lleva el contenido completo de cuatro archivos, y diecinueve copias casi
+entrega lleva el contenido completo de cuatro archivos, y veinte copias casi
 idénticas divergen sin que nadie lo note. Acá la mutación queda a dos líneas de
 su assert.
 """

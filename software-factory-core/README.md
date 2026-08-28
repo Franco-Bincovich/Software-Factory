@@ -557,9 +557,9 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Doscientos doce tests, uno por cada fila de los criterios de aceptación
-de las ocho tareas, más los que cubren lo que se fue arreglando después y las
-piezas de V0.2:
+Doscientos cincuenta y nueve tests, uno por cada fila de los criterios de
+aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
+después y las piezas de V0.2:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
@@ -571,12 +571,14 @@ piezas de V0.2:
 | `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
 | `test_productor.py` | 14 | el criterio de aceptación de T15 |
-| `test_correr.py` | 10 | el modo de producción a través de la reanudación |
-| `test_verificador_entrega.py` | 29 | un defecto sembrado por regla sobre la entrega limpia |
-| `test_cadena.py` | 18 | la cadena completa, el reintento, la detención y el techo de la cadena |
-| `test_productor_entrega.py` | 25 | el productor de entregas, con cliente falso |
-| `test_correr_cadena.py` | 18 | la costura entre la CLI y la cadena, y el régimen declarado |
+| `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
+| `test_verificador_entrega.py` | 39 | un defecto sembrado por regla sobre la entrega limpia |
+| `test_cadena.py` | 36 | la cadena completa, el reintento, la detención y el techo de la cadena |
+| `test_productor_entrega.py` | 31 | el productor de entregas, con cliente falso |
+| `test_correr_cadena.py` | 19 | la costura entre la CLI y la cadena, y el régimen declarado |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
+| `test_aislamiento_del_estado.py` | 5 | que la suite no escriba en el área de estado real |
+| `test_conteos_declarados.py` | 3 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
 destruye al terminar. La base real nunca se abre desde los tests.

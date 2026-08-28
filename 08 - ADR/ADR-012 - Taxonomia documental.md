@@ -14,7 +14,7 @@ aliases: [ADR-012]
 ## Contexto
 
 Desde que se empezó a construir, apareció en el frontmatter un campo `tipo:` que
-ningún ADR declara. Ya lleva cinco valores distintos —`plan-de-version`,
+ningún ADR declara. Ya lleva seis valores distintos[^conteo] —`plan-de-version`,
 `contrato`, `agent-definition`, `guia`, `runbook`, `norma`— y ninguno está
 definido en ninguna parte.
 
@@ -23,8 +23,8 @@ vocabulario paralelo al de ADR-001, con valores inventados sobre la marcha y
 significados que nadie fijó.
 
 Hay además un problema conexo que el crecimiento del vault dejó al descubierto:
-el Project Master Plan se declara "índice oficial del vault" y no lista nueve
-documentos activos, incluidos los nueve ADRs y los dos artefactos de
+el Project Master Plan se declara "índice oficial del vault" y no lista catorce
+documentos activos[^conteo], incluidos los doce ADRs y los dos artefactos de
 `03 - Agent Framework/`. La estructura declarada y la estructura real no
 coinciden.
 
@@ -122,3 +122,17 @@ Este ADR agrega una dimensión de clasificación, no una estructura nueva.
   correcto.
 - **Versionado semántico de documentos.** El campo `version` existe y su
   semántica no está declarada. No lo necesita nada hoy.
+
+[^conteo]: **Dos cifras del Contexto se corrigieron el 2026-08-28.** Decía "cinco
+valores distintos" y enumeraba seis en la misma línea; la tabla de la Decisión, en
+la línea 44, ya decía "Seis valores". Y decía que el índice "no lista nueve
+documentos activos, incluidos los nueve ADRs y los dos artefactos", donde nueve no
+puede incluir nueve más dos. Los valores correctos —seis, catorce y doce— se
+tomaron de este mismo documento y del `vault-diagnostico.md` del 2026-08-11, que
+registra 12 ADRs existentes y los dos artefactos de `03 - Agent Framework/` fuera
+del índice.
+    Un ADR fechado no se corrige cuando envejece: es un registro de lo que se
+decidió y de lo que se sabía ese día. Estas dos no envejecieron. Eran errores de
+conteo interno el día que se escribieron, contradichos por el propio documento
+treinta líneas más abajo, y dejarlas sería conservar una equivocación aritmética
+en lugar de una decisión. La decisión que este ADR toma no cambia.
