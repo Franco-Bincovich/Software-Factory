@@ -255,7 +255,50 @@ def _contexto_de_dependencias(contexto_unidades):
     )
 
 
-def _mensaje_inicial(unidad, contexto_unidades):
+def _donde_trabajas(paquete):
+    """Dónde aterrizan sus archivos y qué hay ya depositado. ADR-014 punto 1.
+
+    Va en el mensaje del turno y no en el system prompt: varía por unidad, y el
+    system prompt es el prefijo cacheado. Meter acá algo que cambia invalidaría
+    el caché en cada unidad del plan.
+
+    Sin esta sección el agente decide a ciegas si sus nombres pisan los de otra
+    unidad. En la corrida real decidió que sí, renombró sus entregables y el
+    verificador se los rechazó por C5 y C6.
+    """
+    paquete = paquete or {}
+    directorio = paquete.get("directorio_trabajo")
+    if not directorio:
+        return ""
+
+    depositado = paquete.get("ya_depositado") or []
+    if depositado:
+        inventario = (
+            "Otras unidades ya depositaron esto en el directorio de la cadena, "
+            "cada una en su propia carpeta:\n\n%s\n\n**No los toques.** No están "
+            "en tu subdirectorio y no son tuyos." % "\n".join("- `%s`" % r for r in depositado)
+        )
+    else:
+        inventario = "Todavía no hay nada depositado: sos la primera unidad."
+
+    return """
+# Dónde trabajás
+
+Tus archivos se depositan en `{directorio}`, que es **tuyo y de ninguna otra
+unidad**. Las rutas que declarás en la entrega son relativas a ese directorio.
+
+Por eso los nombres fijos del contrato —`pruebas.html`, `demo.html`— **no chocan**
+con los de otra unidad, aunque se llamen igual: cada unidad tiene su carpeta.
+Entregalos con el nombre que el contrato manda. No los renombres, no les agregues
+el identificador de la unidad y no inventes variantes para evitar una colisión
+que no existe: el verificador rechaza tanto el archivo que nadie pidió como el que
+falta.
+
+{inventario}
+""".format(directorio=directorio, inventario=inventario)
+
+
+def _mensaje_inicial(unidad, contexto_unidades, paquete=None):
     """La unidad que le toca y sus dependencias. Nunca el plan completo."""
     return """\
 Producí la Entrega para esta unidad de trabajo. Es la única unidad que te toca:
@@ -277,7 +320,7 @@ acá.
 # Unidades de las que depende
 
 {dependencias}
-
+{donde}
 {forma}\
 """.format(
         id=unidad["id"],
@@ -285,11 +328,12 @@ acá.
         artefacto=unidad["artefacto_esperado"],
         criterios=_criterios_de(unidad),
         dependencias=_contexto_de_dependencias(contexto_unidades),
+        donde=_donde_trabajas(paquete),
         forma=FORMA_DE_RESPUESTA,
     )
 
 
-def _mensaje_correccion(unidad, entrega_anterior, incumplimientos):
+def _mensaje_correccion(unidad, entrega_anterior, incumplimientos, paquete=None):
     """Pide corregir la entrega anterior. No pide una nueva.
 
     Regenerar íntegramente lo prohíbe el campo 9 de la Agent Definition: se trata
@@ -330,7 +374,7 @@ trata como agotamiento y corta la corrida.
 **Enunciado:** {enunciado}
 
 {criterios}
-
+{donde}
 {forma}\
 """.format(
         detalle=detalle,
@@ -338,6 +382,7 @@ trata como agotamiento y corta la corrida.
         id=unidad["id"],
         enunciado=unidad["enunciado"],
         criterios=_criterios_de(unidad),
+        donde=_donde_trabajas(paquete),
         forma=FORMA_DE_RESPUESTA,
     )
 
@@ -382,8 +427,8 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
     """Devuelve la `producir_fn` que espera `grafo_developer`.
 
     La función devuelta cumple la firma del grafo del Developer —`(unidad,
-    contexto_unidades, entrega_anterior, incumplimientos, contexto_vault)`— y
-    responde `(entrega, costo)`.
+    contexto_unidades, entrega_anterior, incumplimientos, contexto_vault,
+    paquete)`— y responde `(entrega, costo)`.
 
     `cliente` existe para los tests: permite ejercitar el armado del prompt, el
     parseo y el cálculo de costo sin invocar al proveedor. En producción se deja
@@ -403,7 +448,8 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
         cliente = Anthropic(api_key=api_key)
     esquema = cargar_esquema()
 
-    def producir(unidad, contexto_unidades, entrega_anterior, incumplimientos, contexto_vault):
+    def producir(unidad, contexto_unidades, entrega_anterior, incumplimientos,
+                 contexto_vault, paquete=None):
         if not contexto_vault:
             raise DeveloperSinContexto(
                 "el productor de entregas no recibió ningún documento del Vault. "
@@ -416,9 +462,9 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
         # Sin entrega previa —o con la entrega vacía que deja una iteración cuya
         # respuesta no fue JSON— no hay nada que corregir: se produce de nuevo.
         if not entrega_anterior:
-            mensaje = _mensaje_inicial(unidad, contexto_unidades)
+            mensaje = _mensaje_inicial(unidad, contexto_unidades, paquete)
         else:
-            mensaje = _mensaje_correccion(unidad, entrega_anterior, incumplimientos)
+            mensaje = _mensaje_correccion(unidad, entrega_anterior, incumplimientos, paquete)
 
         # El system prompt es el prefijo estable de todas las llamadas de todas
         # las unidades del plan: se cachea. Sin esto el contexto del Vault

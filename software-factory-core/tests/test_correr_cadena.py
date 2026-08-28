@@ -181,7 +181,18 @@ class ConCadena(BaseCLI):
     def test_registra_la_definicion_de_developer_como_hecho(self):
         run_id = self.hasta_el_gate_de_salida()
         (hecho,) = self.de_tipo(run_id, correr.EVENTO_CADENA)
-        self.assertEqual(hecho["payload"]["developer"], str(self.ruta_developer))
+        # Guardada relativa al repositorio —ADR-014 punto 3—, pero tiene que
+        # seguir señalando la misma definición.
+        self.assertEqual(
+            Path(correr.absoluta_desde(hecho["payload"]["developer"], correr.RAIZ_REPO)),
+            Path(self.ruta_developer),
+        )
+
+    def test_la_definicion_se_registra_en_relativo(self):
+        """ADR-014 punto 3: ningún evento nuevo escribe una ruta absoluta."""
+        run_id = self.hasta_el_gate_de_salida()
+        (hecho,) = self.de_tipo(run_id, correr.EVENTO_CADENA)
+        self.assertFalse(Path(hecho["payload"]["developer"]).is_absolute())
 
     def test_se_reanuda_sin_repetir_el_flag(self):
         """El hecho manda: la cadena se rearma sola al reanudar."""

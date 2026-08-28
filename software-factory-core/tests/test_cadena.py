@@ -9,6 +9,7 @@ trabajo temporales. La base real nunca se abre y nada se escribe fuera del
 temporal.
 """
 
+import json
 import sys
 import tempfile
 import unittest
@@ -22,6 +23,7 @@ import cadena  # noqa: E402
 import gates  # noqa: E402
 import grafo  # noqa: E402
 from grafo import UnidadAmbigua  # noqa: E402
+import operational_state  # noqa: E402
 import presupuesto  # noqa: E402
 from agent_loader import cargar  # noqa: E402
 from operational_state import OperationalState  # noqa: E402
@@ -140,7 +142,8 @@ def productor_de(plan):
 def developer_que_falla_en(unidad_id):
     """Entrega una entrega inválida —sin demo.html— solo para esa unidad."""
 
-    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault):
+    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
+                 paquete=None):
         entrega = producir_entrega_stub(unidad, contexto, None, [], contexto_vault)
         if unidad["id"] == unidad_id:
             entrega["archivos"] = [
@@ -154,7 +157,8 @@ def developer_que_falla_en(unidad_id):
 def developer_que_corrige(registro):
     """Primero entrega sin demo.html; corrige recién con los incumplimientos."""
 
-    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault):
+    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
+                 paquete=None):
         registro.append(
             {
                 "unidad": unidad["id"],
@@ -178,7 +182,8 @@ def developer_que_corrige(registro):
 def developer_que_declara_ambigua(unidad_id, motivo):
     """Devuelve la entrega vacía del contrato para esa unidad."""
 
-    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault):
+    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
+                 paquete=None):
         if unidad["id"] == unidad_id:
             raise UnidadAmbigua(motivo, costo=0.05)
         return producir_entrega_stub(
@@ -207,7 +212,15 @@ class BaseCadena(unittest.TestCase):
         self.checkpointer = grafo.abrir_checkpointer(raiz / "checkpoints.db")
         self.definicion_developer = cargar(str(self.ruta_developer))
 
+        # El temporal es el directorio de estado durante el test, igual que en
+        # producción: las rutas de los eventos se relativizan contra él, y si el
+        # trabajo quedara afuera lo relativo sería una cadena de `..` seguida de
+        # la ruta absoluta, o sea nada relativo.
+        self._dir_estado = operational_state.DIR_ESTADO
+        operational_state.DIR_ESTADO = raiz
+
     def tearDown(self):
+        operational_state.DIR_ESTADO = self._dir_estado
         self.store.cerrar()
         self._dir.cleanup()
 
@@ -215,6 +228,16 @@ class BaseCadena(unittest.TestCase):
 
     def de_tipo(self, run_id, tipo):
         return [e for e in self.store.leer_run(run_id) if e["tipo"] == tipo]
+
+    def ruta_de_trabajo(self, run_id):
+        """El directorio de la corrida, absoluto, para poder mirar el disco.
+
+        El evento lo guarda relativo al directorio de estado —ADR-014 punto 3—,
+        así que un test que quiera abrir la carpeta tiene que expandirlo. Que la
+        ruta guardada sea relativa lo comprueba `RutasRelativasEnLosEventos`;
+        acá el punto es otro y la ruta es solo un medio.
+        """
+        return Path(cadena.directorio_registrado(self.store, run_id))
 
     def nodo(self, developer=producir_entrega_stub, costo=0.0):
         return cadena.nodo_ejecutar_unidades(
@@ -332,7 +355,8 @@ class OrdenDeUnidades(BaseCadena):
     def test_la_unidad_recibe_las_entregas_de_las_que_depende(self):
         vistos = []
 
-        def espia(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault):
+        def espia(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
+                  paquete=None):
             vistos.append((unidad["id"], [c["unidad"]["id"] for c in contexto]))
             return producir_entrega_stub(
                 unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
@@ -409,8 +433,7 @@ class DetencionDelPlan(BaseCadena):
         run, _, _ = self.correr_cadena(
             TRES_UNIDADES, developer=developer_que_falla_en("U3")
         )
-        (registrado,) = self.de_tipo(run, "directorio_trabajo")
-        self.assertTrue(Path(registrado["payload"]["ruta"]).exists())
+        self.assertTrue(self.ruta_de_trabajo(run).exists())
         self.assertEqual(self.de_tipo(run, "directorio_borrado"), [])
 
 
@@ -478,8 +501,7 @@ class DirectorioDeTrabajo(BaseCadena):
     def test_uno_por_corrida_con_un_subdirectorio_por_unidad(self):
         run, plan, _ = self.correr_cadena(TRES_UNIDADES)
 
-        (registrado,) = self.de_tipo(run, "directorio_trabajo")
-        ruta = Path(registrado["payload"]["ruta"])
+        ruta = self.ruta_de_trabajo(run)
         self.assertEqual(ruta.name, run)
         self.assertTrue(ruta.is_relative_to(self.trabajo))
 
@@ -491,7 +513,8 @@ class DirectorioDeTrabajo(BaseCadena):
 
     def test_se_borra_recien_despues_de_aprobar_el_gate(self):
         run, plan, _ = self.correr_cadena()
-        ruta = Path(self.de_tipo(run, "directorio_trabajo")[0]["payload"]["ruta"])
+        ruta = self.ruta_de_trabajo(run)
+        registrada = self.de_tipo(run, "directorio_trabajo")[0]["payload"]["ruta"]
 
         # Con el Gate abierto y sin resolver, el directorio sigue estando.
         self.assertTrue(ruta.exists())
@@ -500,11 +523,13 @@ class DirectorioDeTrabajo(BaseCadena):
         self.cerrar_con_gate(run, plan)
         self.assertFalse(ruta.exists())
         (borrado,) = self.de_tipo(run, "directorio_borrado")
-        self.assertEqual(borrado["payload"]["ruta"], str(ruta))
+        # Se anota el mismo domicilio que se anotó al crearlo: sin eso, nadie
+        # puede empatar el borrado con lo borrado.
+        self.assertEqual(borrado["payload"]["ruta"], registrada)
 
     def test_conservar_trabajo_no_lo_borra(self):
         run, plan, _ = self.correr_cadena(conservar=True)
-        ruta = Path(self.de_tipo(run, "directorio_trabajo")[0]["payload"]["ruta"])
+        ruta = self.ruta_de_trabajo(run)
         self.cerrar_con_gate(run, plan, conservar=True)
         self.assertTrue(ruta.exists())
         self.assertEqual(self.de_tipo(run, "directorio_borrado"), [])
@@ -540,13 +565,192 @@ class Idempotencia(BaseCadena):
 
     def test_reusa_el_directorio_ya_registrado(self):
         run, plan, _ = self.correr_cadena()
-        ruta = self.de_tipo(run, "directorio_trabajo")[0]["payload"]["ruta"]
+        ruta = str(self.ruta_de_trabajo(run))
         self.nodo()({
             "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
             "techo_cadena": PEDIDO["techo_costo_usd"],
         })
         self.assertEqual(len(self.de_tipo(run, "directorio_trabajo")), 1)
         self.assertEqual(cadena.directorio_registrado(self.store, run), ruta)
+
+
+# --- 7b — el paquete que recibe el Developer (ADR-014) -----------------------
+
+
+def developer_que_anota_el_paquete(paquetes):
+    """Entrega normal, pero deja registrado el paquete con el que la produjo."""
+
+    def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
+                 paquete=None):
+        paquetes.append((unidad["id"], paquete))
+        return producir_entrega_stub(
+            unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
+        )
+
+    return producir
+
+
+class PaqueteSuficiente(BaseCadena):
+    """ADR-014: el agente recibe dónde deposita y qué hay ya depositado.
+
+    Sin estos dos datos el agente decide a ciegas si sus nombres pisan los de
+    otra unidad, y decide mal: en la corrida real renombró sus entregables y
+    pagó un rechazo por C5 y C6.
+    """
+
+    def test_la_unidad_recibe_su_domicilio_y_es_el_suyo_propio(self):
+        paquetes = []
+        run, _, _ = self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_anota_el_paquete(paquetes)
+        )
+        directorio = self.ruta_de_trabajo(run)
+
+        self.assertEqual([uid for uid, _ in paquetes], ["U1", "U3", "U2"])
+        for uid, paquete in paquetes:
+            # El suyo, no el de la cadena: cada unidad tiene carpeta propia y por
+            # eso los nombres fijos del contrato no chocan.
+            self.assertEqual(Path(paquete["directorio_trabajo"]), directorio / uid)
+
+    def test_el_inventario_arranca_vacio_y_crece_con_lo_ya_depositado(self):
+        paquetes = []
+        self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_anota_el_paquete(paquetes)
+        )
+        por_unidad = dict(paquetes)
+
+        # La primera unidad no tiene nada que mirar.
+        self.assertEqual(por_unidad["U1"]["ya_depositado"], [])
+
+        # La segunda ve lo de la primera, prefijado por su subdirectorio, y
+        # descubre ahí que `pruebas.html` y `demo.html` no son suyos.
+        self.assertEqual(
+            por_unidad["U3"]["ya_depositado"],
+            ["U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html"],
+        )
+
+        # La tercera ve las dos anteriores.
+        self.assertEqual(
+            por_unidad["U2"]["ya_depositado"],
+            [
+                "U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html",
+                "U3/src/u3.js", "U3/tests/u3.test.js", "U3/pruebas.html", "U3/demo.html",
+            ],
+        )
+
+    def test_el_inventario_sale_del_registro_y_no_del_disco(self):
+        """Lo que el agente lee se declara, no se descubre. ADR-003 y ADR-014 D."""
+        entregas = {
+            "U1": {"archivos": [{"ruta": "demo.html"}, {"ruta": "src/u1.js"}]},
+            "U2": {"archivos": []},
+        }
+        self.assertEqual(
+            cadena.ya_depositado(entregas), ["U1/demo.html", "U1/src/u1.js"]
+        )
+        self.assertEqual(cadena.ya_depositado({}), [])
+
+
+# --- 7c — ningún evento nuevo escribe una ruta absoluta (ADR-014 punto 3) ----
+
+
+class RutasRelativasEnLosEventos(BaseCadena):
+    def test_el_directorio_se_registra_relativo_al_directorio_de_estado(self):
+        run, plan, _ = self.correr_cadena()
+        (registrado,) = self.de_tipo(run, "directorio_trabajo")
+        ruta = registrado["payload"]["ruta"]
+
+        self.assertFalse(Path(ruta).is_absolute())
+        # Y sigue señalando la carpeta real: relativizar no puede perder el dato.
+        self.assertTrue(
+            Path(operational_state.absoluta_desde(ruta, operational_state.DIR_ESTADO))
+            .is_relative_to(self.trabajo)
+        )
+
+    def test_el_borrado_registra_la_misma_ruta_relativa(self):
+        run, plan, _ = self.correr_cadena()
+        self.cerrar_con_gate(run, plan)
+        (borrado,) = self.de_tipo(run, "directorio_borrado")
+        self.assertFalse(Path(borrado["payload"]["ruta"]).is_absolute())
+
+    def test_el_gate_de_salida_somete_una_ruta_relativa(self):
+        run, _, _ = self.correr_cadena()
+        salida = self.de_tipo(run, "gate_abierto")[1]["payload"]["somete"]
+        self.assertFalse(Path(salida["directorio_trabajo"]).is_absolute())
+
+    def test_ningun_evento_de_la_cadena_lleva_una_ruta_absoluta(self):
+        """El barrido: se mira todo el registro, no los eventos que uno recuerda.
+
+        Los cuatro sitios se arreglaron uno por uno; esta prueba es la que
+        detecta el quinto que aparezca después.
+        """
+        run, plan, _ = self.correr_cadena(TRES_UNIDADES)
+        self.cerrar_con_gate(run, plan)
+
+        runs = [run] + [
+            e["payload"]["run_developer"] for e in self.de_tipo(run, "unidad_lanzada")
+        ]
+        for run_id in runs:
+            for evento in self.store.leer_run(run_id):
+                texto = json.dumps(evento["payload"], ensure_ascii=False)
+                self.assertNotIn(
+                    str(self._dir.name), texto,
+                    "el evento %s de %s lleva una ruta absoluta de esta máquina"
+                    % (evento["tipo"], run_id),
+                )
+
+
+# --- 7d — reanudar una corrida con el directorio guardado en relativo --------
+
+
+class ReanudarConDirectorioRelativo(BaseCadena):
+    """El riesgo que introduce guardar relativo: que al reanudar no se expanda.
+
+    `directorio_registrado` alimenta el directorio de toda la corrida. Si
+    devolviera lo que el evento dice tal cual, la cadena reanudada escribiría
+    contra una ruta relativa al proceso —otra carpeta— y las unidades que
+    faltaban aterrizarían en cualquier lado sin que nada fallara ruidosamente.
+    """
+
+    def test_la_segunda_unidad_aterriza_en_el_directorio_de_la_primera(self):
+        # La cadena se detiene con U3 fallada: quedan unidades sin ejecutar y el
+        # directorio ya está registrado, en relativo.
+        run, plan, _ = self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_falla_en("U3")
+        )
+        (registrado,) = self.de_tipo(run, "directorio_trabajo")
+        self.assertFalse(Path(registrado["payload"]["ruta"]).is_absolute())
+        directorio = self.ruta_de_trabajo(run)
+        self.assertTrue((directorio / "U1" / "demo.html").is_file())
+
+        # Se reanuda con un Developer que sí puede con U3.
+        self.nodo()({
+            "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
+            "techo_cadena": PEDIDO["techo_costo_usd"],
+        })
+
+        # No se creó un segundo directorio y lo nuevo cayó junto a lo viejo.
+        self.assertEqual(len(self.de_tipo(run, "directorio_trabajo")), 1)
+        for uid in ("U1", "U2", "U3"):
+            self.assertTrue((directorio / uid / "demo.html").is_file())
+
+    def test_el_inventario_de_la_corrida_reanudada_incluye_lo_ya_entregado(self):
+        """Reanudar no le hace perder al agente lo que otras unidades dejaron."""
+        run, plan, _ = self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_falla_en("U3")
+        )
+        paquetes = []
+        self.nodo(developer_que_anota_el_paquete(paquetes))({
+            "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
+            "techo_cadena": PEDIDO["techo_costo_usd"],
+        })
+
+        # U1 ya estaba entregada antes de reanudar y no se re-ejecutó, pero U3
+        # —la primera que corre al reanudar— la ve igual: el inventario sale del
+        # Operational State, así que sobrevive al corte.
+        self.assertEqual(paquetes[0][0], "U3")
+        self.assertEqual(
+            paquetes[0][1]["ya_depositado"],
+            ["U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html"],
+        )
 
 
 # --- 8 — orden topológico ---------------------------------------------------
