@@ -314,5 +314,91 @@ class CorridaSinModoRegistrado(BaseCLI):
         self.assertIn("no hay corrida", error)
 
 
+class PrecedenciaDelEntornoSobreDotenv(unittest.TestCase):
+    """De dónde sale la credencial cuando el entorno y el `.env` no coinciden.
+
+    `load_dotenv` comprueba **presencia**, no contenido: una variable definida
+    pero vacía está presente, así que le gana al `.env`. Pasó en una sesión
+    real con `ANTHROPIC_API_KEY=""` exportada en el shell — la Fábrica moría
+    diciendo "no configurada" con la key escrita en el `.env`, a un palmo, y
+    el mensaje no daba ninguna pista de por qué.
+
+    La regla que se comprueba acá es la que `_credencial_y_modelo` ya declara
+    dos veces con sus `.strip()`: **una variable vacía es una variable no
+    configurada**. Lo único que faltaba era aplicarla antes de leer el `.env`
+    y no después.
+
+    No hereda de `BaseCLI` a propósito: esa base neutraliza `load_dotenv` con
+    un no-op para que la suite no lea la credencial real, y con eso puesto
+    estos tests no comprobarían nada. Acá se ejerce el `load_dotenv` de verdad
+    contra un `.env` de mentira en un temporal, nunca el del repo.
+    """
+
+    CLAVE_DEL_DOTENV = "clave-escrita-en-el-dotenv"
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.tmp = Path(self._dir.name)
+        (self.tmp / ".env").write_text(
+            "ANTHROPIC_API_KEY=%s\nANTHROPIC_MODEL=modelo-del-dotenv\n"
+            % self.CLAVE_DEL_DOTENV,
+            encoding="utf-8",
+        )
+
+        # `RAIZ` es lo que decide qué `.env` se lee. Apuntada al temporal, el
+        # del repo queda fuera de alcance por construcción y no por disciplina.
+        raiz = mock.patch.object(correr, "RAIZ", self.tmp)
+        raiz.start()
+        self.addCleanup(raiz.stop)
+
+        entorno = mock.patch.dict(os.environ, {})
+        entorno.start()
+        self.addCleanup(entorno.stop)
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        os.environ.pop("ANTHROPIC_MODEL", None)
+
+    def test_una_variable_vacia_no_le_gana_al_dotenv(self):
+        """El caso que rompió: definida y vacía es un hueco, no una decisión."""
+        os.environ["ANTHROPIC_API_KEY"] = ""
+
+        api_key, modelo = correr._credencial_y_modelo()
+
+        self.assertEqual(api_key, self.CLAVE_DEL_DOTENV)
+        self.assertEqual(modelo, "modelo-del-dotenv")
+
+    def test_una_variable_con_solo_espacios_tambien_es_vacia(self):
+        """El borde que el `.strip()` de la función ya contemplaba."""
+        os.environ["ANTHROPIC_API_KEY"] = "   "
+
+        api_key, _ = correr._credencial_y_modelo()
+
+        self.assertEqual(api_key, self.CLAVE_DEL_DOTENV)
+
+    def test_una_variable_con_valor_real_le_gana_al_dotenv(self):
+        """La precedencia no se invierte, y este test es lo que lo impide.
+
+        En producción y en CI no hay `.env`: el entorno *es* la configuración.
+        Si alguien "arregla" esto con `override=True`, un `.env` local pasaría
+        a ganarle a la credencial inyectada y acá se rompería.
+        """
+        os.environ["ANTHROPIC_API_KEY"] = "clave-inyectada-por-el-entorno"
+        os.environ["ANTHROPIC_MODEL"] = "modelo-inyectado-por-el-entorno"
+
+        api_key, modelo = correr._credencial_y_modelo()
+
+        self.assertEqual(api_key, "clave-inyectada-por-el-entorno")
+        self.assertEqual(modelo, "modelo-inyectado-por-el-entorno")
+
+    def test_una_variable_ausente_se_toma_del_dotenv(self):
+        """El caso normal en una máquina de desarrollo."""
+        self.assertNotIn("ANTHROPIC_API_KEY", os.environ)
+
+        api_key, modelo = correr._credencial_y_modelo()
+
+        self.assertEqual(api_key, self.CLAVE_DEL_DOTENV)
+        self.assertEqual(modelo, "modelo-del-dotenv")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
