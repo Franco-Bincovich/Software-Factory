@@ -590,8 +590,18 @@ costó producirlo; quien recibe eso decide qué hacer.
 **El costo se mide, no se estima.** Sale de los tokens que la propia respuesta
 declara, multiplicados por el precio de lista del modelo, que está escrito a
 mano en `PRECIOS_USD_POR_MTOK`. Un modelo sin precio declarado no arranca: sin
-precio el consumo no se puede medir y el techo de ADR-010 sería decorativo. Un
-precio desactualizado no falla, miente — se actualiza a mano cuando cambia.
+precio el consumo no se puede medir y el techo de ADR-010 sería decorativo.
+
+Se cobran los cuatro contadores, no dos: entrada, salida, escritura de caché y
+lectura de caché. La escritura vale 1,25x la entrada base si el caché dura 5
+minutos y 2x si dura una hora, y la lectura 0,1x; los dos TTL vienen en campos
+distintos y se cobran distinto. Cobrar sólo entrada y salida con el caching
+encendido hacía que el techo midiera sobre una corrida más barata que la real.
+
+Un precio desactualizado no falla, miente — y miente en las dos direcciones. El
+que subestima no corta cuando tiene que cortar; el que sobreestima corta
+corridas que podían seguir. Por eso la tabla lleva **fecha de verificación y
+fuente**: un precio sin eso tiene el mismo defecto que un conteo escrito a mano.
 
 ### Configuración
 
@@ -628,7 +638,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Cuatrocientos treinta y siete tests, uno por cada fila de los criterios de
+Cuatrocientos cuarenta y nueve tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -638,10 +648,10 @@ después y las piezas de V0.2:
 | `test_intake.py` | 9 | el criterio de aceptación de T8 |
 | `test_agent_loader.py` | 10 | el criterio de aceptación de T10 |
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
-| `test_presupuesto.py` | 15 | el criterio de aceptación de T12 y los dos formatos del consumo |
+| `test_presupuesto.py` | 16 | el criterio de aceptación de T12, los dos formatos del consumo y el techo medido con el caché cobrado |
 | `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
-| `test_productor.py` | 18 | el criterio de aceptación de T15 y el desglose del consumo |
+| `test_productor.py` | 29 | el criterio de aceptación de T15, el desglose del consumo y la tabla de precios verificada con sus cuatro contadores |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 39 | un defecto sembrado por regla sobre la entrega limpia |
 | `test_cadena.py` | 66 | la cadena completa, el reintento, la detención, el techo de la cadena, el depósito de artefactos, el enganche de QA y qué hace cada nodo con una respuesta ilegible |

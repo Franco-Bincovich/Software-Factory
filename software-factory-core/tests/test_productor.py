@@ -45,10 +45,20 @@ PLAN = {"plan_id": "PLAN-1", "unidades": []}
 # --- dobles de la API -------------------------------------------------------
 
 
+class CreacionDeCache(object):
+    """El objeto anidado bajo `usage.cache_creation`, abierto por TTL."""
+
+    def __init__(self, cinco_min=0, una_hora=0):
+        self.ephemeral_5m_input_tokens = cinco_min
+        self.ephemeral_1h_input_tokens = una_hora
+
+
 class Uso(object):
-    def __init__(self, entrada, salida):
+    def __init__(self, entrada, salida, cache_creation=None):
         self.input_tokens = entrada
         self.output_tokens = salida
+        if cache_creation is not None:
+            self.cache_creation = cache_creation
 
 
 class Bloque(object):
@@ -95,11 +105,60 @@ class ModeloDesconocido(unittest.TestCase):
         self.assertIn("no tiene precio declarado", str(capturado.exception))
 
 
+class TablaDePrecios(unittest.TestCase):
+    """Los precios son dato externo; lo que se puede fijar acá es lo verificado.
+
+    Copiada a mano el 2026-08-30 de la tabla "Model pricing" de
+    https://platform.claude.com/docs/en/about-claude/pricing. **Los números están
+    escritos a mano a propósito.** Si se derivaran de las constantes del módulo,
+    el test se verificaría a sí mismo y pasaría con cualquier precio.
+    """
+
+    #: modelo -> (entrada, escritura 5m, escritura 1h, lectura, salida), USD/MTok
+    TABLA = {
+        "claude-sonnet-5": (2.00, 2.50, 4.00, 0.20, 10.00),
+        "claude-opus-5": (5.00, 6.25, 10.00, 0.50, 25.00),
+        "claude-haiku-4-5": (1.00, 1.25, 2.00, 0.10, 5.00),
+    }
+
+    #: Qué contador del desglose corresponde a cada columna de la tabla.
+    COLUMNAS = (
+        ("input_tokens", 0),
+        ("ephemeral_5m_input_tokens", 1),
+        ("ephemeral_1h_input_tokens", 2),
+        ("cache_read_input_tokens", 3),
+        ("output_tokens", 4),
+    )
+
+    def test_se_declaran_los_mismos_modelos_que_se_verificaron(self):
+        """Media tabla verificada es peor que ninguna: nadie sabe cuál mitad."""
+        self.assertEqual(set(productor.PRECIOS_USD_POR_MTOK), set(self.TABLA))
+
+    def test_un_millon_de_cada_contador_cuesta_lo_que_dice_la_tabla(self):
+        """Cobra un contador por vez, no la suma de los cinco.
+
+        La suma admite que dos errores se cancelen. Columna por columna, no.
+
+        Es además el único test que ata los multiplicadores de caché al precio
+        base: si alguien actualiza `PRECIOS_USD_POR_MTOK` y no toca
+        `MULTIPLICADORES_DE_CACHE` —o al revés—, las tres columnas de caché
+        dejan de dar y esto cae.
+        """
+        for modelo, fila in self.TABLA.items():
+            for contador, columna in self.COLUMNAS:
+                with self.subTest(modelo=modelo, contador=contador):
+                    self.assertAlmostEqual(
+                        costo_de({contador: 1_000_000}, modelo), fila[columna]
+                    )
+
+
 class CalculoDeCosto(unittest.TestCase):
     def test_sale_de_los_tokens_declarados_y_el_precio_del_modelo(self):
-        # 1M de entrada a USD 3 y 1M de salida a USD 15 dan USD 18.
+        # 1M de entrada a USD 2 y 1M de salida a USD 10 dan USD 12.
         self.assertAlmostEqual(
-            costo_de(Uso(1_000_000, 1_000_000), "claude-sonnet-5"), 18.0
+            costo_de({"input_tokens": 1_000_000, "output_tokens": 1_000_000},
+                     "claude-sonnet-5"),
+            12.0,
         )
         # Los tres precios declarados son coherentes entre sí.
         for modelo, precio in productor.PRECIOS_USD_POR_MTOK.items():
@@ -110,8 +169,90 @@ class CalculoDeCosto(unittest.TestCase):
         producir, _ = productor_con(Respuesta(json.dumps(PLAN), 30_000, 4_000))
         plan, consumo = producir(PEDIDO, None, [], CONTEXTO)
         self.assertEqual(plan, PLAN)
-        # 30k * 3/1M + 4k * 15/1M = 0.09 + 0.06
-        self.assertAlmostEqual(consumo["costo"], 0.15)
+        # 30k * 2/1M + 4k * 10/1M = 0.06 + 0.04
+        self.assertAlmostEqual(consumo["costo"], 0.10)
+
+
+class CobroDelCache(unittest.TestCase):
+    """Los cuatro contadores se cobran. Antes se cobraban dos y el techo mentía."""
+
+    SIN_CACHE = {"input_tokens": 1_000, "output_tokens": 500}
+
+    def costo(self, **extra):
+        return costo_de(dict(self.SIN_CACHE, **extra), "claude-sonnet-5")
+
+    def test_la_misma_llamada_con_cache_cuesta_mas_que_sin_cache(self):
+        sin_cache = self.costo()
+        # 1k * 2/1M + 500 * 10/1M
+        self.assertAlmostEqual(sin_cache, 0.007)
+
+        escritura = self.costo(
+            cache_creation_input_tokens=20_000,
+            ephemeral_5m_input_tokens=20_000,
+        )
+        # 20k a 1,25x sobre USD 2 = USD 0,05 más.
+        self.assertAlmostEqual(escritura, sin_cache + 0.05)
+
+        lectura = self.costo(cache_read_input_tokens=20_000)
+        # 20k a 0,1x sobre USD 2 = USD 0,004 más.
+        self.assertAlmostEqual(lectura, sin_cache + 0.004)
+
+        self.assertGreater(escritura, lectura)
+        self.assertGreater(lectura, sin_cache)
+
+    def test_la_escritura_de_una_hora_cuesta_mas_que_la_de_cinco_minutos(self):
+        """La tabla distingue los dos TTL, así que la fórmula también.
+
+        Los mismos tokens, el mismo modelo, la misma llamada: sólo cambia cuánto
+        dura el caché. Cobrarlos igual sería cobrar la mitad la mitad de las
+        veces.
+        """
+        cinco_min = self.costo(
+            cache_creation_input_tokens=20_000, ephemeral_5m_input_tokens=20_000
+        )
+        una_hora = self.costo(
+            cache_creation_input_tokens=20_000, ephemeral_1h_input_tokens=20_000
+        )
+        # 1,25x contra 2x sobre los mismos 20k: USD 0,05 contra USD 0,08.
+        self.assertAlmostEqual(una_hora - cinco_min, 0.03)
+
+    def test_la_escritura_desglosada_no_se_cobra_dos_veces(self):
+        """El campo plano es la suma de los dos TTL, no un tercer contador."""
+        contadores = {
+            "cache_creation_input_tokens": 20_000,
+            "ephemeral_5m_input_tokens": 12_000,
+            "ephemeral_1h_input_tokens": 8_000,
+        }
+        self.assertAlmostEqual(
+            costo_de(contadores, "claude-sonnet-5"),
+            (12_000 * 2 * 1.25 + 8_000 * 2 * 2) / 1_000_000,
+        )
+
+    def test_la_escritura_sin_desglose_se_cobra_a_cinco_minutos(self):
+        """Los eventos viejos traen la suma sola. No es un supuesto prudente.
+
+        Los `cache_control` de la fábrica no declaran `ttl`, y sin `ttl` la API
+        cachea a 5 minutos: todo lo que está escrito en el registro es escritura
+        de 5 minutos.
+        """
+        self.assertAlmostEqual(
+            costo_de({"cache_creation_input_tokens": 20_000}, "claude-sonnet-5"),
+            0.05,
+        )
+
+
+class EventosViejos(unittest.TestCase):
+    """La fórmula nueva lee lo que escribió la vieja. No se migra nada."""
+
+    def test_un_desglose_sin_los_campos_de_cache_se_cobra_sin_cache(self):
+        # Es el payload exacto que dejaba la fórmula anterior: dos contadores.
+        viejo = {"costo": 0.15, "modelo": "claude-sonnet-5",
+                 "input_tokens": 30_000, "output_tokens": 4_000}
+        self.assertAlmostEqual(costo_de(viejo, "claude-sonnet-5"), 0.10)
+
+    def test_un_evento_sin_ningun_contador_no_cuesta_nada_y_no_falla(self):
+        """Los stubs registran un número pelado, sin desglose que cobrar."""
+        self.assertEqual(costo_de({}, "claude-sonnet-5"), 0.0)
 
 
 class DesgloseDelConsumo(unittest.TestCase):
@@ -119,7 +260,7 @@ class DesgloseDelConsumo(unittest.TestCase):
 
     def test_lleva_los_tokens_que_la_api_declaro_y_el_stop_reason(self):
         consumo = consumo_de(Uso(30_000, 4_000), "claude-sonnet-5", "end_turn")
-        self.assertAlmostEqual(consumo["costo"], 0.15)
+        self.assertAlmostEqual(consumo["costo"], 0.10)
         self.assertEqual(consumo["modelo"], "claude-sonnet-5")
         self.assertEqual(consumo["input_tokens"], 30_000)
         self.assertEqual(consumo["output_tokens"], 4_000)
@@ -136,6 +277,33 @@ class DesgloseDelConsumo(unittest.TestCase):
         uso = Uso(10, 10)
         uso.cache_read_input_tokens = 0
         self.assertEqual(consumo_de(uso, "claude-sonnet-5")["cache_read_input_tokens"], 0)
+
+    def test_la_escritura_de_cache_queda_abierta_por_ttl(self):
+        """Sin esto la fórmula no puede cobrar bien, porque los TTL valen distinto."""
+        uso = Uso(1_000, 500, CreacionDeCache(cinco_min=12_000, una_hora=8_000))
+        uso.cache_creation_input_tokens = 20_000
+        consumo = consumo_de(uso, "claude-sonnet-5")
+
+        self.assertEqual(consumo["ephemeral_5m_input_tokens"], 12_000)
+        self.assertEqual(consumo["ephemeral_1h_input_tokens"], 8_000)
+        # La suma plana se guarda igual: es lo que declara la API y lo único
+        # comparable contra los eventos viejos.
+        self.assertEqual(consumo["cache_creation_input_tokens"], 20_000)
+
+    def test_el_costo_guardado_es_el_de_los_contadores_guardados(self):
+        """El evento y el precio no pueden discrepar: se cobra el mismo dict."""
+        uso = Uso(1_000, 500, CreacionDeCache(cinco_min=20_000))
+        uso.cache_creation_input_tokens = 20_000
+        consumo = consumo_de(uso, "claude-sonnet-5")
+
+        contadores = {c: consumo[c] for c in consumo if c.endswith("_tokens")}
+        self.assertAlmostEqual(consumo["costo"], costo_de(contadores, "claude-sonnet-5"))
+        self.assertAlmostEqual(consumo["costo"], 0.057)
+
+    def test_sin_cache_creation_no_se_inventan_los_ttl(self):
+        consumo = consumo_de(Uso(10, 10), "claude-sonnet-5")
+        self.assertNotIn("ephemeral_5m_input_tokens", consumo)
+        self.assertNotIn("ephemeral_1h_input_tokens", consumo)
 
 
 # --- prompt -----------------------------------------------------------------
@@ -279,7 +447,7 @@ class FallosDeInfraestructura(unittest.TestCase):
         with self.assertRaises(FalloDeInfraestructura) as capturado:
             producir(PEDIDO, None, [], CONTEXTO)
         self.assertIn("políticas de contenido", str(capturado.exception))
-        self.assertAlmostEqual(capturado.exception.consumo["costo"], 0.03)
+        self.assertAlmostEqual(capturado.exception.consumo["costo"], 0.02)
 
 
 class SinContextoDelVault(unittest.TestCase):
