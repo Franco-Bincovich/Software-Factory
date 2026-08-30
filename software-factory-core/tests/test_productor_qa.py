@@ -27,7 +27,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ / "src"))
 
 import productor_qa  # noqa: E402
-from grafo import FalloDeInfraestructura  # noqa: E402
+from grafo import FalloDeInfraestructura, RespuestaIlegible  # noqa: E402
 from productor_qa import (  # noqa: E402
     CasosNoParseables,
     ModeloSinPrecio,
@@ -199,10 +199,18 @@ class SinContexto(unittest.TestCase):
 class CalculoDeCosto(unittest.TestCase):
     def test_sale_de_los_tokens_declarados_y_del_precio(self):
         respuesta = Respuesta(json.dumps({"casos": CASOS}), entrada=20000, salida=6000)
-        (casos, costo), _ = producir({"respuesta": respuesta})
+        (casos, consumo), _ = producir({"respuesta": respuesta})
         esperado = (20000 * 3.00 + 6000 * 15.00) / 1_000_000
-        self.assertAlmostEqual(costo, esperado)
+        self.assertAlmostEqual(consumo["costo"], esperado)
         self.assertEqual(len(casos), 1)
+
+    def test_el_desglose_explica_el_costo_de_un_paso_de_qa(self):
+        """El caso que motivó todo esto: 0,125 para producir cero casos."""
+        respuesta = Respuesta(json.dumps({"casos": CASOS}), entrada=8000, salida=7000)
+        (_, consumo), _ = producir({"respuesta": respuesta})
+        self.assertEqual(consumo["input_tokens"], 8000)
+        self.assertEqual(consumo["output_tokens"], 7000)
+        self.assertEqual(consumo["stop_reason"], "end_turn")
 
 
 # --- 4 — el prompt -----------------------------------------------------------
@@ -400,23 +408,38 @@ class Parseo(unittest.TestCase):
 
 
 class RespuestaDegradada(unittest.TestCase):
-    """Cero casos, nunca casos inventados.
+    """Nunca casos inventados. Y nunca cero casos por una falla en silencio.
 
-    Una tanda que no se pudo leer deja todos los criterios sin comprobar, y la
-    tabla lo dice. Rellenar sería exactamente lo que ADR-018 prohíbe: convertir
-    una pregunta abierta en un veredicto.
+    Rellenar sería lo que ADR-018 prohíbe: convertir una pregunta abierta en un
+    veredicto. Pero devolver la lista vacía cuando la respuesta no se pudo leer
+    era peor, porque cero casos hace que todos los criterios salgan
+    `no_verificable_mecanicamente` y la unidad **pase**: una falla que firmaba
+    trabajo sin verificar, con el mismo aspecto que un QA que decidió bien.
+
+    La línea no es cuántos casos hay: es si se entendió lo que el modelo dijo.
     """
 
-    def test_una_respuesta_cortada_da_cero_casos_y_cobra(self):
+    def test_una_respuesta_cortada_dice_que_quedo_cortada(self):
         respuesta = Respuesta("{\"casos\": [{\"crit", stop_reason="max_tokens")
-        (casos, costo), _ = producir({"respuesta": respuesta})
-        self.assertEqual(casos, [])
-        self.assertGreater(costo, 0)
+        with self.assertRaises(RespuestaIlegible) as capturado:
+            producir({"respuesta": respuesta})
+        self.assertEqual(capturado.exception.motivo, "truncada")
+        self.assertIn(str(productor_qa.MAX_TOKENS), capturado.exception.detalle)
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
-    def test_una_respuesta_no_parseable_da_cero_casos_y_cobra(self):
-        (casos, costo), _ = producir({"respuesta": Respuesta("no sé qué probar")})
+    def test_una_respuesta_no_parseable_dice_que_no_se_pudo_parsear(self):
+        with self.assertRaises(RespuestaIlegible) as capturado:
+            producir({"respuesta": Respuesta("no sé qué probar")})
+        self.assertEqual(capturado.exception.motivo, "no_parseable")
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
+
+    def test_la_lista_vacia_que_se_pudo_leer_sigue_siendo_una_respuesta(self):
+        """El silencio legítimo: QA contestó, y contestó que no hay nada que probar."""
+        (casos, consumo), _ = producir(
+            {"respuesta": Respuesta(json.dumps({"casos": []}))}
+        )
         self.assertEqual(casos, [])
-        self.assertGreater(costo, 0)
+        self.assertGreater(consumo["costo"], 0)
 
 
 # --- 7 — fallos --------------------------------------------------------------
@@ -434,7 +457,7 @@ class Fallos(unittest.TestCase):
         respuesta = Respuesta("", stop_reason="refusal")
         with self.assertRaises(FalloDeInfraestructura) as capturado:
             producir({"respuesta": respuesta})
-        self.assertGreater(capturado.exception.costo, 0)
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
 
 # --- 8 — el techo de tokens --------------------------------------------------

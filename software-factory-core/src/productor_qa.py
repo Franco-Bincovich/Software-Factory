@@ -61,13 +61,13 @@ import json
 
 from anthropic import APIError
 
-from grafo import FalloDeInfraestructura
+from grafo import FalloDeInfraestructura, RespuestaIlegible
 from productor import (
     MODELO_POR_DEFECTO,
     PRECIOS_USD_POR_MTOK,
     ModeloSinPrecio,
     _CERCA_JSON,
-    costo_de,
+    consumo_de,
 )
 
 # Una tanda de casos son expresiones cortas, no archivos completos. El techo del
@@ -78,9 +78,14 @@ MAX_TOKENS = 8000
 class CasosNoParseables(ValueError):
     """La respuesta del modelo no es JSON.
 
-    No es un fallo de infraestructura. Se devuelve la lista vacía: todos los
-    criterios quedan sin caso anclado y por lo tanto no verificables
-    mecánicamente, que es exactamente lo que pasó.
+    La levanta `parsear_casos` y la traduce `crear_productor` a
+    `RespuestaIlegible`, que es la que entiende el grafo.
+
+    **No devuelve la lista vacía, y antes sí.** Devolverla dejaba a QA con cero
+    casos, y cero casos hace que todos los criterios salgan
+    `no_verificable_mecanicamente` y la unidad pase. Una respuesta que no se
+    pudo leer terminaba firmando trabajo que nadie verificó, con el mismo
+    aspecto que un QA que había decidido bien.
     """
 
 
@@ -485,23 +490,36 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
                 "el proveedor del modelo no respondió: %s" % error
             )
 
-        costo = costo_de(respuesta.usage, modelo)
+        consumo = consumo_de(respuesta.usage, modelo, respuesta.stop_reason)
 
         if respuesta.stop_reason == "refusal":
             raise FalloDeInfraestructura(
                 "el modelo rechazó la unidad por políticas de contenido. La "
                 "corrida se corta y la unidad se revisa a mano.",
-                costo=costo,
+                consumo=consumo,
             )
 
-        # Una respuesta cortada o no parseable deja cero casos. No se inventa
-        # nada: todos los criterios quedan sin comprobar y la tabla lo dice, que
-        # es más honesto que devolver una tanda a medias y llamarla verificación.
+        # Acá había un `return [], costo` para los dos casos de abajo, y era el
+        # agujero más caro de la fábrica: cero casos hace que todos los criterios
+        # salgan `no_verificable_mecanicamente`, y eso **pasa**. Una respuesta que
+        # no se pudo leer firmaba la unidad con el mismo aspecto que un QA que
+        # había mirado y decidido. Ahora se distingue.
+        #
+        # La lista vacía sigue siendo una respuesta legítima —la da el stub, y la
+        # da el modelo cuando ningún criterio es verificable mecánicamente—, pero
+        # sólo cuando **se pudo leer** que era vacía: `{"casos": []}` parsea y
+        # llega abajo intacta. La línea no es cuántos casos hay, es si se entendió
+        # lo que el modelo contestó.
         if respuesta.stop_reason == "max_tokens":
-            return [], costo
+            raise RespuestaIlegible(
+                "truncada",
+                "el modelo llegó al techo de %d tokens de salida y la respuesta "
+                "quedó cortada." % MAX_TOKENS,
+                consumo=consumo,
+            )
         try:
-            return parsear_casos(_texto_de(respuesta)), costo
-        except CasosNoParseables:
-            return [], costo
+            return parsear_casos(_texto_de(respuesta)), consumo
+        except CasosNoParseables as error:
+            raise RespuestaIlegible("no_parseable", str(error), consumo=consumo)
 
     return producir

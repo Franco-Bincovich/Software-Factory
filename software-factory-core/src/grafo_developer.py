@@ -48,7 +48,13 @@ import operational_state
 import presupuesto
 import verificacion_sustantiva
 import verificador_entrega
-from grafo import FalloDeInfraestructura, UnidadAmbigua, _Techos, leer_contexto_vault
+from grafo import (
+    FalloDeInfraestructura,
+    RespuestaIlegible,
+    UnidadAmbigua,
+    _Techos,
+    leer_contexto_vault,
+)
 from operational_state import relativa_a
 
 AGENTE = "developer-agent"
@@ -143,8 +149,8 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 },
             )
         except FalloDeInfraestructura as fallo:
-            if fallo.costo:
-                presupuesto.registrar_consumo(store, run_id, fallo.costo)
+            if fallo.consumo:
+                presupuesto.registrar_consumo(store, run_id, fallo.consumo)
             store.append(
                 run_id,
                 "fallo_infraestructura",
@@ -152,13 +158,55 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 {"detalle": str(fallo), "iteracion": estado["iteracion"]},
             )
             return {"resultado": "escalado_por_infraestructura"}
+        except RespuestaIlegible as ilegible:
+            # **Acá se anota y se sigue; en `_nodo_qa` se escala.** No es una
+            # inconsistencia: es la diferencia entre los dos nodos.
+            #
+            # Lo que sale de acá va al verificador de entregas, que rechaza la
+            # entrega vacía y devuelve incumplimientos. El bucle de corrección
+            # reintenta con ellos, y si tres iteraciones no alcanzan, la unidad
+            # escala igual. O sea: una respuesta ilegible acá **no aprueba nada**,
+            # sólo gasta una iteración. Lo único que faltaba era decir por qué se
+            # gastó, y eso es este evento.
+            #
+            # En QA no hay nadie abajo que rechace: cero casos aprueba. Por eso
+            # allá escala. Igualar los tres nodos "para que se comporten igual"
+            # sería, en un sentido o en el otro, o hacer que QA firme sin mirar o
+            # hacer que una iteración mala corte la corrida.
+            store.append(
+                run_id,
+                "respuesta_ilegible",
+                PLATAFORMA,
+                {
+                    "etapa": "entrega",
+                    "motivo": ilegible.motivo,
+                    "detalle": ilegible.detalle,
+                    "unidad": estado["unidad"]["id"],
+                    "iteracion": estado["iteracion"],
+                },
+            )
+            if ilegible.consumo:
+                presupuesto.registrar_consumo(store, run_id, ilegible.consumo)
+            # **No se deposita y no se emite `entrega_producida`.** No hay entrega
+            # que depositar: el modelo no dijo nada que se pudiera leer. Un evento
+            # `entrega_producida` sobre esto afirmaría una entrega que no existe, y
+            # el registro inmutable no podría desdecirlo. Antes esto ni siquiera
+            # llegaba a decidirse: el productor devolvía `{}`, el depósito lo
+            # recibía y la corrida moría con un `KeyError`.
+            #
+            # La iteración sí se gasta y el consumo sí se cobra: se pagó.
+            return {
+                "entrega": {},
+                "iteracion": estado["iteracion"] + 1,
+                "incumplimientos": [],
+            }
         except UnidadAmbigua as ambigua:
             # No va al verificador y no cuenta como iteración mala. El contrato
             # declara válida la entrega vacía ante una unidad ambigua, y el
             # criterio 6 del piso de ADR-004 manda escalar. Reintentarla tres
             # veces quemaría el techo en una unidad que ya dijo que no se puede.
-            if ambigua.costo:
-                presupuesto.registrar_consumo(store, run_id, ambigua.costo)
+            if ambigua.consumo:
+                presupuesto.registrar_consumo(store, run_id, ambigua.consumo)
             store.append(
                 run_id,
                 "unidad_ambigua",
@@ -244,6 +292,10 @@ def _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion):
     `SinFrontera` escala en vez de aprobar. Que la máquina no tenga frontera de
     kernel no dice nada sobre el entregable, y dar por buena una unidad que no se
     pudo verificar sería registrar como verificado algo que nadie miró.
+
+    `RespuestaIlegible` escala por el mismo argumento y por otra causa: si QA
+    contestó algo que no se pudo leer, tampoco miró. Ver el bloque que la atrapa
+    más abajo, que explica por qué acá escala y en `_nodo_producir` no.
     """
 
     def nodo(estado):
@@ -258,8 +310,8 @@ def _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion):
                 contexto,
             )
         except FalloDeInfraestructura as fallo:
-            if fallo.costo:
-                presupuesto.registrar_consumo(store, run_id, fallo.costo)
+            if fallo.consumo:
+                presupuesto.registrar_consumo(store, run_id, fallo.consumo)
             store.append(
                 run_id,
                 "fallo_infraestructura",
@@ -267,6 +319,36 @@ def _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion):
                 {"detalle": str(fallo), "iteracion": estado["iteracion"], "etapa": "qa"},
             )
             return {"resultado": "escalado_por_infraestructura"}
+        except RespuestaIlegible as ilegible:
+            # **Acá se escala; en `_nodo_producir` se anota y se sigue.** La
+            # diferencia no es de criterio, es de qué hay abajo de cada nodo.
+            #
+            # Abajo del productor hay un verificador: la entrega vacía se rechaza,
+            # el bucle de corrección reintenta y nada se aprueba por accidente.
+            # Abajo de QA no hay nadie. Cero casos hace que todos los criterios
+            # salgan `no_verificable_mecanicamente`, y eso **pasa**: la unidad
+            # queda firmada, indistinguible de una que QA miró y aprobó.
+            #
+            # Es el mismo hecho que `SinFrontera` por otra causa —una unidad que no
+            # se pudo verificar— y por eso termina igual. Alguien va a querer
+            # unificar los tres nodos "porque hacen lo mismo con la misma
+            # excepción". Hacen lo mismo hasta acá: uno tiene red abajo y el otro
+            # es la red.
+            if ilegible.consumo:
+                presupuesto.registrar_consumo(store, run_id, ilegible.consumo)
+            store.append(
+                run_id,
+                "respuesta_ilegible",
+                PLATAFORMA,
+                {
+                    "etapa": "qa",
+                    "motivo": ilegible.motivo,
+                    "detalle": ilegible.detalle,
+                    "unidad": estado["unidad"]["id"],
+                    "iteracion": estado["iteracion"],
+                },
+            )
+            return {"resultado": "escalado_por_qa_ilegible"}
 
         if isinstance(producido, tuple):
             casos, costo = producido

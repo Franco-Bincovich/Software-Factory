@@ -117,6 +117,16 @@ def verificar(store, run_id, definicion, ahora=None):
     return TechoAlcanzado(alcanzados)
 
 
-def registrar_consumo(store, run_id, costo):
-    """Registra lo consumido en este momento. Es un delta, no el acumulado."""
-    store.append(run_id, "consumo_registrado", "plataforma", {"costo": costo})
+def registrar_consumo(store, run_id, consumo):
+    """Registra lo consumido en este momento. Es un delta, no el acumulado.
+
+    Acepta un número o el desglose que arma `productor.consumo_de`. El número
+    sigue existiendo porque los stubs no invocan a nadie y no tienen desglose que
+    declarar: inventarles uno sería afirmar tokens que nunca se pidieron.
+
+    Lo que se guarda siempre lleva `costo`, que es el único campo que
+    `consumo` de acá arriba lee. Por eso los eventos viejos —que sólo tienen
+    ése— se siguen leyendo sin migrar nada.
+    """
+    payload = dict(consumo) if isinstance(consumo, dict) else {"costo": consumo}
+    store.append(run_id, "consumo_registrado", "plataforma", payload)

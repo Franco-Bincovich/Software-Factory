@@ -15,7 +15,11 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 import productor_entrega  # noqa: E402
 import verificador_entrega  # noqa: E402
-from grafo import FalloDeInfraestructura, UnidadAmbigua  # noqa: E402
+from grafo import (  # noqa: E402
+    FalloDeInfraestructura,
+    RespuestaIlegible,
+    UnidadAmbigua,
+)
 from productor_entrega import (  # noqa: E402
     DeveloperSinContexto,
     EntregaNoParseable,
@@ -182,10 +186,11 @@ class ModeloDesconocido(unittest.TestCase):
 class CalculoDeCosto(unittest.TestCase):
     def test_sale_de_los_tokens_declarados_y_del_precio(self):
         respuesta = Respuesta(json.dumps(ENTREGA), entrada=20000, salida=6000)
-        (entrega, costo), _ = producir({"respuesta": respuesta})
+        (entrega, consumo), _ = producir({"respuesta": respuesta})
         # Sonnet 5 declarado a 3/15 por millón.
         esperado = (20000 * 3.00 + 6000 * 15.00) / 1_000_000
-        self.assertAlmostEqual(costo, esperado)
+        self.assertAlmostEqual(consumo["costo"], esperado)
+        self.assertEqual(consumo["output_tokens"], 6000)
         self.assertEqual(entrega["unidad"], "U2")
 
 
@@ -381,16 +386,18 @@ class Parseo(unittest.TestCase):
 
 
 class RespuestaInutilizable(unittest.TestCase):
-    def test_json_invalido_devuelve_entrega_vacia_con_su_costo(self):
-        (entrega, costo), _ = producir({"respuesta": Respuesta("perdón, no puedo")})
-        self.assertEqual(entrega, {})
-        self.assertGreater(costo, 0)
+    def test_json_invalido_dice_que_no_se_pudo_parsear(self):
+        with self.assertRaises(RespuestaIlegible) as capturado:
+            producir({"respuesta": Respuesta("perdón, no puedo")})
+        self.assertEqual(capturado.exception.motivo, "no_parseable")
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
-    def test_respuesta_cortada_por_max_tokens_tambien(self):
+    def test_respuesta_cortada_por_max_tokens_dice_que_quedo_cortada(self):
         respuesta = Respuesta('{"unidad": "U2", "archi', stop_reason="max_tokens")
-        (entrega, costo), _ = producir({"respuesta": respuesta})
-        self.assertEqual(entrega, {})
-        self.assertGreater(costo, 0)
+        with self.assertRaises(RespuestaIlegible) as capturado:
+            producir({"respuesta": respuesta})
+        self.assertEqual(capturado.exception.motivo, "truncada")
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
     def test_la_entrega_vacia_de_una_iteracion_mala_la_rechaza_el_verificador(self):
         veredicto = verificador_entrega.verificar({}, {"unidades": [UNIDAD]})
@@ -415,7 +422,7 @@ class FallosQueEscalan(unittest.TestCase):
         with self.assertRaises(FalloDeInfraestructura) as capturado:
             producir({"respuesta": respuesta})
         self.assertIn("políticas de contenido", str(capturado.exception))
-        self.assertGreater(capturado.exception.costo, 0)
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
 
 # --- 10 — la unidad ambigua no se corrige, escala ---------------------------
@@ -431,7 +438,7 @@ class EntregaVacia(unittest.TestCase):
         with self.assertRaises(UnidadAmbigua) as capturado:
             producir({"respuesta": Respuesta(json.dumps(vacia))})
         self.assertIn("se contradice", capturado.exception.motivo)
-        self.assertGreater(capturado.exception.costo, 0)
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
     def test_sin_motivo_declarado_escala_igual_y_lo_dice(self):
         vacia = {"unidad": "U2", "archivos": [], "supuestos": []}

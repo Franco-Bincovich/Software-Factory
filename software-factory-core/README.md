@@ -628,7 +628,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Cuatrocientos veinticuatro tests, uno por cada fila de los criterios de
+Cuatrocientos treinta y siete tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -638,13 +638,13 @@ después y las piezas de V0.2:
 | `test_intake.py` | 9 | el criterio de aceptación de T8 |
 | `test_agent_loader.py` | 10 | el criterio de aceptación de T10 |
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
-| `test_presupuesto.py` | 12 | el criterio de aceptación de T12 |
+| `test_presupuesto.py` | 15 | el criterio de aceptación de T12 y los dos formatos del consumo |
 | `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
-| `test_productor.py` | 14 | el criterio de aceptación de T15 |
+| `test_productor.py` | 18 | el criterio de aceptación de T15 y el desglose del consumo |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 39 | un defecto sembrado por regla sobre la entrega limpia |
-| `test_cadena.py` | 62 | la cadena completa, el reintento, la detención, el techo de la cadena, el depósito de artefactos y el enganche de QA |
+| `test_cadena.py` | 66 | la cadena completa, el reintento, la detención, el techo de la cadena, el depósito de artefactos, el enganche de QA y qué hace cada nodo con una respuesta ilegible |
 | `test_productor_entrega.py` | 31 | el productor de entregas, con cliente falso |
 | `test_correr_cadena.py` | 33 | la costura entre la CLI y la cadena, el régimen declarado y el encendido de QA |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
@@ -652,7 +652,7 @@ después y las piezas de V0.2:
 | `test_conteos_declarados.py` | 4 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
 | `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
 | `test_verificacion_sustantiva.py` | 40 | el anclaje, el veredicto por criterio, el invariante de la superficie de rechazo contra salidas fabricadas y el Control 4: que la evidencia dependa del artefacto |
-| `test_productor_qa.py` | 40 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, y la Agent Definition del QA Agent |
+| `test_productor_qa.py` | 42 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, y la Agent Definition del QA Agent |
 | `test_qa_contra_defectos.py` | 16 | QA contra dos entregas reales del registro: acepta las correctas y rechaza cuatro defectos sembrados nombrando el criterio que cada uno rompió |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
