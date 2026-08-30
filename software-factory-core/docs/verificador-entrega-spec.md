@@ -87,10 +87,11 @@ hay uno hace que el reintento corrija dos veces lo mismo.
 | `C3` | Contenido completo, sin marcadores de fragmento | Parcial — coincidencia léxica |
 | `C4` | El artefacto que la unidad declaró esperar está en la entrega | Parcial — extrae rutas de un campo en prosa |
 | `C5` | Lo que no es uno de los cuatro entregables está declarado auxiliar y justificado | Total |
-| `C6` | Los cuatro entregables presentes y ninguno vacío | Total |
-| `C7` | Los dos HTML cargan la lógica y ninguno la reimplementa | Parcial — ve declaraciones, no equivalencia |
+| `C6` | Los cuatro entregables presentes en el espacio y ninguno vacío | Total |
+| `C7` | Los dos HTML cargan **toda** la lógica del espacio y ninguno la reimplementa | Parcial — ve declaraciones, no equivalencia |
 | `C8` | No hay dos archivos con la misma ruta | Total |
 | `C9` | — | Cubierta por `C0` |
+| `C10` | Ningún archivo de contenido repite una ruta que otra parte ya depositó | Total |
 | `R1` | Ningún archivo pasa de 200 líneas | Total |
 | `R3` | Sin `console.log(` ni secretos literales | Parcial — la detección de secretos es léxica |
 | `R8` | El archivo de pruebas ejercita la lógica entregada | Parcial — que exista y la nombre, sí; que la pruebe bien, no |
@@ -108,6 +109,39 @@ ya cubren `C5` —archivos que nadie pidió— y `R3` —restos de depuración y
 secretos—. Un identificador que existe solo para que la Agent Definition no quede
 desmentida es documentación que miente sobre lo que verifica. La Agent Definition
 declara tres reglas del Ruleset, no cuatro.
+
+### El inventario del espacio, y las tres reglas que lo miran — ADR-019
+
+`verificar` toma un cuarto argumento opcional, `inventario`: la lista de
+`{ruta, rol, contenido, sha256, parte}` de lo que las partes anteriores del plan
+ya depositaron en el espacio de trabajo. Lo arma `cadena.inventario_del_espacio`
+a partir del Operational State, nunca leyendo la carpeta.
+
+Sin él —el verificador corrido a mano por la CLI, o la primera parte de una
+cadena— las tres reglas que lo consultan se comportan como antes de ADR-019, que
+es exactamente el caso de una parte única.
+
+| Regla | Qué cambia con inventario |
+|---|---|
+| `C6` | Los cuatro entregables se exigen **en el espacio**, no en la entrega: una parte que sólo agrega pruebas cumple con la lógica que dejó la anterior |
+| `C7` | Los agregadores tienen que cargar la lógica de **todas** las partes, no sólo la propia |
+| `C10` | Repetir una ruta que ya está se rechaza, con la excepción de los dos agregadores |
+
+**C10 tiene dos ramas y el detalle las distingue**, porque lo que el Developer
+tiene que hacer es distinto en cada una. Mismo hash es duplicar: el trabajo ya
+estaba hecho, se saca el archivo de la entrega y el archivo sigue en el espacio.
+Hash distinto es modificar lo firmado: no se corrige sacando nada, o la parte se
+replantea para agregar, o escala.
+
+**La excepción de los agregadores es por nombre declarado**, la constante
+`AGREGADORES`, y no por heurística. Una heurística que adivinara qué archivo
+agrega se equivoca el día que alguien llame `index.html` a la lógica. Y es C7 la
+que paga esa excepción: si a `pruebas.html` y `demo.html` se los exceptúa de C10
+*porque* agregan, entonces C7 tiene que exigirles que agreguen de verdad.
+
+**Lo congelado es la lógica y sus tests, no cada byte del espacio.** Los
+agregadores crecen por construcción; congelarlos sería congelar el resumen para
+proteger el contenido.
 
 ### Las dos reglas más parciales, y qué no ven
 
@@ -207,7 +241,7 @@ positivo sobre la entrega limpia lo invalida igual que un falso negativo.
 
 **Los defectos se siembran mutando la fixture limpia**, no con un archivo por
 defecto como en T7. Es deliberado: una entrega lleva el contenido completo de
-cuatro archivos, y veinte copias casi idénticas divergen sin que nadie lo note.
+cuatro archivos, y veintiuna copias casi idénticas divergen sin que nadie lo note.
 La mutación queda a dos líneas de su assert.
 
 | Fixture | Qué es |

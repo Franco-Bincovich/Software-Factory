@@ -7,7 +7,7 @@ un falso negativo.
 
 **Los defectos se siembran mutando la fixture limpia, no con un archivo por
 defecto.** Es una desviación deliberada del patrón de `test_verificador.py`: una
-entrega lleva el contenido completo de cuatro archivos, y veinte copias casi
+entrega lleva el contenido completo de cuatro archivos, y veintiuna copias casi
 idénticas divergen sin que nadie lo note. Acá la mutación queda a dos líneas de
 su assert.
 """
@@ -344,6 +344,155 @@ class DefectoSembrado(unittest.TestCase):
             i for i in verificar(e, plan())["incumplimientos"] if i["regla"] == "V5"
         ]
         self.assertEqual(fallos, [])
+
+
+def en_el_espacio(*archivos, parte="U0"):
+    """Una entrada de inventario por archivo, con la forma que arma `cadena`.
+
+    La parte anterior se llama `U0` y no está en el plan a propósito: el
+    verificador no busca al firmante en ningún lado, sólo lo nombra en el
+    detalle. Ponerla en el plan haría creer que lo consulta.
+    """
+    return [
+        {
+            "ruta": ruta,
+            "rol": rol,
+            "contenido": contenido,
+            "sha256": hashlib.sha256(contenido.encode("utf-8")).hexdigest(),
+            "parte": parte,
+        }
+        for ruta, rol, contenido in archivos
+    ]
+
+
+def como_esta(entrega_, ruta, parte="U0"):
+    """Lo que la entrega trae en esa ruta, visto como ya depositado por otra parte."""
+    a = archivo(entrega_, ruta)
+    return en_el_espacio((a["ruta"], a["rol"], a["contenido"]), parte=parte)
+
+
+class EspacioQueAcumula(unittest.TestCase):
+    """Las tres reglas que miran el inventario — ADR-019.
+
+    C10 es nueva; C6 y C7 cambiaron de alcance. Las tres se comportan como antes
+    cuando no hay inventario, que es el caso de la primera parte de una cadena y
+    el del verificador corrido a mano por la CLI: eso ya lo cubre el resto del
+    archivo, que nunca lo pasa.
+    """
+
+    def test_c10_misma_ruta_con_el_mismo_hash_es_duplicar(self):
+        e = entrega()
+        r = verificar(e, plan(), inventario=como_esta(e, "src/validar-legajo.js"))
+        self.assertEqual(reglas(r), {"C10"})
+        self.assertEqual(r["incumplimientos"][0]["archivo"], "src/validar-legajo.js")
+        # El detalle tiene que decir que el trabajo ya está hecho, no que se
+        # rehaga: sacar el archivo de la entrega es toda la corrección.
+        self.assertIn("mismo contenido", r["incumplimientos"][0]["detalle"])
+        self.assertIn("U0", r["incumplimientos"][0]["detalle"])
+
+    def test_c10_misma_ruta_con_hash_distinto_es_modificar_lo_firmado(self):
+        e = entrega()
+        previo = como_esta(e, "tests/validar-legajo.test.js")
+        previo[0]["contenido"] += "\n// lo que la parte anterior había escrito\n"
+        previo[0]["sha256"] = hashlib.sha256(
+            previo[0]["contenido"].encode("utf-8")
+        ).hexdigest()
+
+        r = verificar(e, plan(), inventario=previo)
+        self.assertEqual(reglas(r), {"C10"})
+        # Y el detalle manda a otro lado: acá no se corrige sacando el archivo.
+        detalle = r["incumplimientos"][0]["detalle"]
+        self.assertIn("no se reabre", detalle)
+        self.assertIn("escale", detalle)
+
+    def test_c10_no_alcanza_a_los_dos_agregadores(self):
+        """Los agregadores se reescriben por diseño: es lo que los hace agregadores."""
+        e = entrega()
+        previos = como_esta(e, "pruebas.html") + como_esta(e, "demo.html")
+        previos[0]["contenido"] += "\n<!-- la version de la parte anterior -->\n"
+        previos[0]["sha256"] = hashlib.sha256(
+            previos[0]["contenido"].encode("utf-8")
+        ).hexdigest()
+
+        r = verificar(e, plan(), inventario=previos)
+        self.assertEqual(r["incumplimientos"], [])
+        self.assertTrue(r["valido"])
+
+    def test_c10_corta_las_dos_ramas_de_una_entrega_que_repite_todo(self):
+        """La parte que vuelve a depositar el espacio entero: dos rechazos, no cuatro.
+
+        Es la forma exacta de las cuatro duplicaciones que midió ADR-019, y la
+        medición que sostiene la regla: rechaza la lógica y las pruebas, y deja
+        pasar el par HTML.
+        """
+        e = entrega()
+        previos = []
+        for a in e["archivos"]:
+            previos += como_esta(e, a["ruta"])
+
+        r = verificar(e, plan(), inventario=previos)
+        self.assertEqual(
+            {i["archivo"] for i in r["incumplimientos"]},
+            {"src/validar-legajo.js", "tests/validar-legajo.test.js"},
+        )
+
+    def test_c6_se_cumple_con_la_logica_que_dejo_la_parte_anterior(self):
+        """Una parte cuyo trabajo es agregar pruebas no tiene que traer la lógica.
+
+        Es la mitad de la contradicción que ADR-019 punto 5 resuelve: si C6
+        siguiera leyéndose sobre la entrega, esta parte tendría que elegir entre
+        incumplir C6 o incumplir C10.
+        """
+        e = entrega()
+        previo = como_esta(e, "src/validar-legajo.js")
+        quitar(e, "src/validar-legajo.js")
+        # El plan tampoco se la pide: C4 sigue leyéndose sobre la unidad —el
+        # plan declara qué produce **esta** parte—, y esta parte escribe las
+        # pruebas de una lógica que ya está en el espacio.
+        p = plan()
+        p["unidades"][0]["artefacto_esperado"] = (
+            "tests/validar-legajo.test.js, pruebas.html y demo.html"
+        )
+
+        r = verificar(e, p, inventario=previo)
+        self.assertEqual(r["incumplimientos"], [])
+        self.assertTrue(r["valido"])
+
+    def test_c6_sin_inventario_la_misma_entrega_no_pasa(self):
+        """El contraste que hace que el test de arriba diga algo."""
+        e = entrega()
+        quitar(e, "src/validar-legajo.js")
+        self.assertIn("C6", reglas(verificar(e, plan())))
+
+    def test_c7_los_agregadores_cargan_la_logica_de_todas_las_partes(self):
+        """Lo que paga la excepción de C10: si agregan, que agreguen todo."""
+        e = entrega()
+        previo = en_el_espacio(
+            ("src/formatear-legajo.js", "artefacto_esperado",
+             "function formatearLegajo(v) { return String(v).trim(); }\n"),
+        )
+
+        r = verificar(e, plan(), inventario=previo)
+        self.assertEqual(reglas(r), {"C7"})
+        self.assertEqual(
+            {i["archivo"] for i in r["incumplimientos"]},
+            {"pruebas.html", "demo.html"},
+        )
+        self.assertIn("src/formatear-legajo.js", r["incumplimientos"][0]["detalle"])
+
+    def test_c7_no_le_exige_a_los_agregadores_cargar_un_auxiliar(self):
+        """Un `.js` auxiliar no es uno de los cuatro entregables y no es lógica.
+
+        Sin esta distinción, cualquier entrega anterior con un archivo de apoyo
+        le inventaría un incumplimiento de C7 a todas las partes siguientes.
+        """
+        e = entrega()
+        previo = en_el_espacio(
+            ("herramientas/generar.js", "auxiliar", "const semilla = 4471;\n"),
+        )
+
+        r = verificar(e, plan(), inventario=previo)
+        self.assertEqual(r["incumplimientos"], [])
 
 
 ENTREGA_DEPOSITADA = FIXTURES / "entrega-depositada"

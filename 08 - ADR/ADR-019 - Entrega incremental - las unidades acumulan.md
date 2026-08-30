@@ -2,7 +2,7 @@
 tipo: adr
 estado: aceptado
 aprobado: 2026-08-30
-version: 1.0
+version: 1.1
 owner: CEO
 actualizado: 2026-08-30
 adr: [ADR-005, ADR-010, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018]
@@ -188,6 +188,78 @@ El bucle de corrección del Developer se mantiene igual, pero su alcance queda
 acotado a lo que todavía no tiene firma. Un reintento que pudiera modificar lo
 aprobado invalidaría el punto 2: el punto de retorno dejaría de ser un punto.
 
+#### Qué es exactamente lo que se congela
+
+**Lo congelado es la lógica y sus tests, no cada byte del espacio de trabajo.**
+
+Los cuatro entregables del contrato no son la misma clase de objeto y tratarlos
+como si lo fueran hace la regla imposible de cumplir:
+
+- **`src/` y `tests/` son contenido.** Crecen por **agregado**: cada parte suma
+  archivos propios y no toca los de las anteriores. Ahí «no reabrir» quiere decir
+  literalmente eso, y se puede exigir archivo por archivo.
+
+- **`pruebas.html` y `demo.html` son agregadores.** Existen para mostrar todo lo
+  que hay en el espacio, así que **crecen por construcción**: la parte que agrega
+  lógica tiene que reescribirlos enteros o dejan de mostrar lo nuevo. Congelar
+  `pruebas.html` sería congelar el resumen para proteger el contenido.
+
+Que el par HTML se reescriba entero **no es reabrir lo firmado**: es la única
+forma de que el agregador siga agregando. Y la excepción es **por nombre declarado
+en el contrato**, nunca por una heurística sobre el contenido: una regla que
+adivine qué archivo es un agregador se equivoca el día que alguien llame `index.html`
+a la lógica.
+
+#### Por qué esta distinción es necesaria
+
+Es la que hace que **la regla nueva y C6 puedan ser las dos verdad**.
+
+La regla nueva rechaza dos cosas: la misma ruta con **hash distinto** —eso es
+modificar lo firmado— y la misma ruta con **el mismo hash** —eso es duplicar—.
+C6, del Contrato de Entrega, exige los cuatro entregables presentes y no vacíos.
+Leídas sobre entregables de unidad, se contradicen: una parte que sólo agrega
+tests incumple C6 si no trae la lógica, y viola la regla nueva si la trae.
+
+Se resuelven leyendo **los cuatro entregables como de la cadena y no de la
+unidad**. Una parte que sólo agrega tests cumple C6 —los cuatro están presentes en
+el espacio, aunque esa parte no los haya producido todos— y no duplica, porque no
+vuelve a escribir la lógica que ya está.
+
+Eso exige **enmendar el Contrato de Entrega**, que hoy describe entregables de una
+unidad aislada. La enmienda no es una consecuencia opcional de este ADR: es
+condición de que sus puntos 1 y 5 sean aplicables. Es la misma enmienda que
+ADR-016 dejó pendiente en su última sección y que ADR-018 tampoco hizo; este ADR
+la pone en el camino crítico.
+
+#### La regla, corrida hacia atrás contra el registro
+
+Antes de escribirla se la simuló sobre las cuatro cadenas de `factory.db`, con el
+espacio armado por partes firmadas y el par HTML exceptuado. Rechaza **siete
+archivos**, ninguno de ellos un agregador:
+
+| Cadena | Parte | Archivo | Rama | Firmante |
+|---|---|---|---|---|
+| `b84a066e…` | U2 | `src/es-email-valido.js` | mismo hash | U1 |
+| `957795bd…` | U2 | `src/validar-email.js` | mismo hash | U1 |
+| `957795bd…` | U2 | `tests/validar-email.test.js` | mismo hash | U1 |
+| `94cc2ae4…` | U2 | `src/validar-email.js` | mismo hash | U1 |
+| `94cc2ae4…` | U2 | `tests/validar-email.test.js` | hash distinto | U1 |
+| `f3b9ea34…` | U2 | `src/validar-email.js` | mismo hash | U1 |
+| `f3b9ea34…` | U2 | `tests/validar-email.test.js` | hash distinto | U1 |
+
+**Las cinco de la rama «mismo hash» son exactamente las cinco filas del hallazgo
+1**, y cubren las cuatro cadenas. Es la medición que sostiene la regla: no corta
+de más ni de menos que lo que se midió como duplicación.
+
+Las **dos de la rama «hash distinto»** no estaban en el hallazgo 1 y aparecieron
+acá: U2 reescribió el archivo de pruebas de U1 con otro contenido. Es la falla que
+la primera rama no ve —no es copiar, es pisar— y la que hace que las dos ramas
+tengan que existir juntas.
+
+Queda afuera `befbec37…`, donde U2 escaló sin producir nada. Esa falla la cura el
+punto 1 —dejar de obligar a elegir entre copiar y salirse—, no esta regla: no hay
+archivo que rechazar cuando no hubo archivo.
+
 ### 6. Revisar todo desde cero se declara en el plan o escala
 
 Si una parte exige revisar todo desde cero, **eso tiene que estar declarado en el
@@ -224,9 +296,11 @@ deja de ser documentación y pasa a ser vinculante.
 
 **Lo que no cambia.** La frontera de ADR-016, que no se ensancha: el espacio de
 trabajo crece, pero sigue siendo un solo directorio del que no se puede salir. Los
-techos de ADR-010, que siguen siendo de la cadena y no por agente. El contrato de
-cuatro entregables. La inmutabilidad de ADR-011: los eventos que registran las
-copias quedan como están, y son la evidencia de por qué se decidió esto.
+techos de ADR-010, que siguen siendo de la cadena y no por agente. **Los cuatro
+entregables siguen siendo cuatro**: lo que cambia es de quién son —de la cadena y
+no de la unidad—, no cuántos ni cuáles. La inmutabilidad de ADR-011: los eventos
+que registran las copias quedan como están, y son la evidencia de por qué se
+decidió esto.
 
 ## Decisiones que habilita
 
@@ -263,6 +337,18 @@ copias quedan como están, y son la evidencia de por qué se decidió esto.
   que no dependen una de la otra —secuencia por posición en el plan o alguna otra
   regla— no lo fija este ADR.
 
-- **La enmienda al Contrato de Entrega** que ADR-016 dejó pendiente y ADR-018
-  tampoco hizo. Sigue pendiente, y este ADR le agrega materia: el contrato describe
-  entregables de una unidad aislada.
+- **Cómo se declara en el plan una revisión desde cero.** El punto 6 tiene dos
+  mitades y este ADR sólo hace exigible una: la escalada. Una parte que necesite
+  reabrir lo firmado es rechazada en cada iteración y termina escalando por
+  iteraciones agotadas, que es la salida correcta —la decide el CEO— pero llega
+  cara, después de gastar el ciclo entero de corrección. La otra mitad —un campo
+  del plan donde el Requirement Agent declare de antemano que una unidad revisa lo
+  anterior, y una regla que entonces la exceptúe— no se implementa acá. Requiere
+  tocar el esquema del plan y el prompt del Requirement Agent, y hasta que exista
+  no hay ninguna forma de que una revisión legítima no escale.
+
+- **El resto de la enmienda al Contrato de Entrega.** El punto 5 exige la parte
+  que este ADR necesita —que los cuatro entregables sean de la cadena y no de la
+  unidad—, y nada más. Lo que ADR-016 dejó pendiente por su lado —declarar el
+  lenguaje y la autocontención de V0.3 en adelante— sigue pendiente y no se toca
+  acá.

@@ -21,6 +21,7 @@ sys.path.insert(0, str(RAIZ))
 
 import cadena  # noqa: E402
 import deposito  # noqa: E402
+import espacio  # noqa: E402
 import gates  # noqa: E402
 import grafo  # noqa: E402
 import grafo_developer  # noqa: E402
@@ -364,7 +365,7 @@ class OrdenDeUnidades(BaseCadena):
                   paquete=None):
             vistos.append((unidad["id"], [c["unidad"]["id"] for c in contexto]))
             return producir_entrega_stub(
-                unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
+                unidad, contexto, entrega_anterior, incumplimientos, contexto_vault, paquete
             )
 
         self.correr_cadena(TRES_UNIDADES, developer=espia)
@@ -509,18 +510,23 @@ class TechoDeLaCadena(BaseCadena):
 
 
 class DirectorioDeTrabajo(BaseCadena):
-    def test_uno_por_corrida_con_un_subdirectorio_por_unidad(self):
+    def test_uno_por_corrida_y_uno_solo_para_todas_las_partes(self):
+        """ADR-019: se fue el subdirectorio por unidad. El espacio es uno y acumula."""
         run, plan, _ = self.correr_cadena(TRES_UNIDADES)
 
         ruta = self.ruta_de_trabajo(run)
         self.assertEqual(ruta.name, run)
         self.assertTrue(ruta.is_relative_to(self.trabajo))
 
-        # Cada unidad en su subdirectorio: si no, se pisarían los dos HTML.
+        # Las tres lógicas conviven, una al lado de la otra y sin prefijo.
         for uid in ("U1", "U2", "U3"):
-            self.assertTrue((ruta / uid / "pruebas.html").is_file())
-            self.assertTrue((ruta / uid / "demo.html").is_file())
-            self.assertTrue((ruta / uid / "src" / ("%s.js" % uid.lower())).is_file())
+            self.assertTrue((ruta / "src" / ("%s.js" % uid.lower())).is_file())
+            self.assertTrue((ruta / "tests" / ("%s.test.js" % uid.lower())).is_file())
+            self.assertFalse((ruta / uid).exists())
+
+        # Y un solo par de agregadores para todas: es lo que los hace agregadores.
+        self.assertTrue((ruta / "pruebas.html").is_file())
+        self.assertTrue((ruta / "demo.html").is_file())
 
     def test_se_borra_recien_despues_de_aprobar_el_gate(self):
         run, plan, _ = self.correr_cadena()
@@ -595,21 +601,28 @@ def developer_que_anota_el_paquete(paquetes):
                  paquete=None):
         paquetes.append((unidad["id"], paquete))
         return producir_entrega_stub(
-            unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
+            unidad, contexto, entrega_anterior, incumplimientos, contexto_vault, paquete
         )
 
     return producir
+
+
+def rutas_de(paquete):
+    return [a["ruta"] for a in paquete["inventario"]]
 
 
 class PaqueteSuficiente(BaseCadena):
     """ADR-014: el agente recibe dónde deposita y qué hay ya depositado.
 
     Sin estos dos datos el agente decide a ciegas si sus nombres pisan los de
-    otra unidad, y decide mal: en la corrida real renombró sus entregables y
+    otra parte, y decide mal: en la corrida real renombró sus entregables y
     pagó un rechazo por C5 y C6.
+
+    Desde ADR-019 el domicilio es el mismo para todas las partes y lo que evita
+    el choque es el inventario, no una carpeta propia.
     """
 
-    def test_la_unidad_recibe_su_domicilio_y_es_el_suyo_propio(self):
+    def test_todas_las_partes_reciben_el_mismo_domicilio(self):
         paquetes = []
         run, _, _ = self.correr_cadena(
             TRES_UNIDADES, developer=developer_que_anota_el_paquete(paquetes)
@@ -617,10 +630,8 @@ class PaqueteSuficiente(BaseCadena):
         directorio = self.ruta_de_trabajo(run)
 
         self.assertEqual([uid for uid, _ in paquetes], ["U1", "U3", "U2"])
-        for uid, paquete in paquetes:
-            # El suyo, no el de la cadena: cada unidad tiene carpeta propia y por
-            # eso los nombres fijos del contrato no chocan.
-            self.assertEqual(Path(paquete["directorio_trabajo"]), directorio / uid)
+        for _, paquete in paquetes:
+            self.assertEqual(Path(paquete["directorio_trabajo"]), directorio)
 
     def test_el_inventario_arranca_vacio_y_crece_con_lo_ya_depositado(self):
         paquetes = []
@@ -629,35 +640,68 @@ class PaqueteSuficiente(BaseCadena):
         )
         por_unidad = dict(paquetes)
 
-        # La primera unidad no tiene nada que mirar.
-        self.assertEqual(por_unidad["U1"]["ya_depositado"], [])
+        # La primera parte no tiene nada que mirar.
+        self.assertEqual(por_unidad["U1"]["inventario"], [])
 
-        # La segunda ve lo de la primera, prefijado por su subdirectorio, y
-        # descubre ahí que `pruebas.html` y `demo.html` no son suyos.
+        # La segunda ve lo de la primera, sin prefijo: es el mismo espacio.
         self.assertEqual(
-            por_unidad["U3"]["ya_depositado"],
-            ["U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html"],
+            rutas_de(por_unidad["U3"]),
+            ["src/u1.js", "tests/u1.test.js", "pruebas.html", "demo.html"],
         )
 
-        # La tercera ve las dos anteriores.
+        # La tercera ve las dos anteriores, y los agregadores una sola vez: son
+        # de la cadena y la parte que los reescribió última se queda con la ruta.
         self.assertEqual(
-            por_unidad["U2"]["ya_depositado"],
+            rutas_de(por_unidad["U2"]),
             [
-                "U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html",
-                "U3/src/u3.js", "U3/tests/u3.test.js", "U3/pruebas.html", "U3/demo.html",
+                "src/u1.js", "tests/u1.test.js", "pruebas.html", "demo.html",
+                "src/u3.js", "tests/u3.test.js",
             ],
         )
+        self.assertEqual(
+            [a["parte"] for a in por_unidad["U2"]["inventario"] if a["ruta"] == "demo.html"],
+            ["U3"],
+        )
+
+    def test_el_inventario_viaja_sin_contenido_y_con_hash(self):
+        """El agente sabe qué hay y de quién es; el código sólo le llega por dependencias."""
+        paquetes = []
+        self.correr_cadena(
+            TRES_UNIDADES, developer=developer_que_anota_el_paquete(paquetes)
+        )
+        for archivo in dict(paquetes)["U2"]["inventario"]:
+            self.assertNotIn("contenido", archivo)
+            self.assertEqual(len(archivo["sha256"]), 64)
+            self.assertIn(archivo["parte"], ("U1", "U3"))
 
     def test_el_inventario_sale_del_registro_y_no_del_disco(self):
         """Lo que el agente lee se declara, no se descubre. ADR-003 y ADR-014 D."""
         entregas = {
-            "U1": {"archivos": [{"ruta": "demo.html"}, {"ruta": "src/u1.js"}]},
+            "U1": {"archivos": [
+                {"ruta": "demo.html", "rol": "artefacto_esperado", "contenido": "a"},
+                {"ruta": "src/u1.js", "rol": "artefacto_esperado", "contenido": "b"},
+            ]},
             "U2": {"archivos": []},
         }
-        self.assertEqual(
-            cadena.ya_depositado(entregas), ["U1/demo.html", "U1/src/u1.js"]
-        )
-        self.assertEqual(cadena.ya_depositado({}), [])
+        inventario = cadena.inventario_del_espacio(entregas)
+        self.assertEqual([a["ruta"] for a in inventario], ["demo.html", "src/u1.js"])
+        self.assertEqual({a["parte"] for a in inventario}, {"U1"})
+        self.assertEqual(inventario[0]["sha256"], cadena.sha256_de("a"))
+        self.assertEqual(cadena.inventario_del_espacio({}), [])
+
+    def test_la_ultima_parte_que_escribio_una_ruta_es_la_que_manda(self):
+        """El espacio es el disco, y en el disco gana la última escritura."""
+        entregas = {
+            "U1": {"archivos": [
+                {"ruta": "demo.html", "rol": "artefacto_esperado", "contenido": "viejo"},
+            ]},
+            "U2": {"archivos": [
+                {"ruta": "demo.html", "rol": "artefacto_esperado", "contenido": "nuevo"},
+            ]},
+        }
+        (demo,) = cadena.inventario_del_espacio(entregas)
+        self.assertEqual(demo["parte"], "U2")
+        self.assertEqual(demo["contenido"], "nuevo")
 
 
 # --- 7c — ningún evento nuevo escribe una ruta absoluta (ADR-014 punto 3) ----
@@ -730,7 +774,7 @@ class ReanudarConDirectorioRelativo(BaseCadena):
         (registrado,) = self.de_tipo(run, "directorio_trabajo")
         self.assertFalse(Path(registrado["payload"]["ruta"]).is_absolute())
         directorio = self.ruta_de_trabajo(run)
-        self.assertTrue((directorio / "U1" / "demo.html").is_file())
+        self.assertTrue((directorio / "src" / "u1.js").is_file())
 
         # Se reanuda con un Developer que sí puede con U3.
         self.nodo()({
@@ -741,7 +785,7 @@ class ReanudarConDirectorioRelativo(BaseCadena):
         # No se creó un segundo directorio y lo nuevo cayó junto a lo viejo.
         self.assertEqual(len(self.de_tipo(run, "directorio_trabajo")), 1)
         for uid in ("U1", "U2", "U3"):
-            self.assertTrue((directorio / uid / "demo.html").is_file())
+            self.assertTrue((directorio / "src" / ("%s.js" % uid.lower())).is_file())
 
     def test_el_inventario_de_la_corrida_reanudada_incluye_lo_ya_entregado(self):
         """Reanudar no le hace perder al agente lo que otras unidades dejaron."""
@@ -759,8 +803,11 @@ class ReanudarConDirectorioRelativo(BaseCadena):
         # Operational State, así que sobrevive al corte.
         self.assertEqual(paquetes[0][0], "U3")
         self.assertEqual(
-            paquetes[0][1]["ya_depositado"],
-            ["U1/src/u1.js", "U1/tests/u1.test.js", "U1/pruebas.html", "U1/demo.html"],
+            rutas_de(paquetes[0][1]),
+            ["src/u1.js", "tests/u1.test.js", "pruebas.html", "demo.html"],
+        )
+        self.assertEqual(
+            {a["parte"] for a in paquetes[0][1]["inventario"]}, {"U1"}
         )
 
 
@@ -797,31 +844,45 @@ class EvidenciaDeEntrega(BaseCadena):
         self.assertEqual(area.parent.parent, Path(operational_state.DIR_ESTADO))
 
         # Y lo escrito es exactamente lo que dice el evento, byte a byte. La
-        # fuente es el registro y no el directorio de trabajo: por eso el área
-        # es derivable, y por eso si alguna vez discrepara gana el evento.
+        # fuente es el registro y no el directorio de trabajo: por eso si alguna
+        # vez discreparan gana el evento.
         entregadas = self.de_tipo(run, "unidad_entregada")
         self.assertEqual([e["payload"]["unidad"] for e in entregadas], ["U1", "U3", "U2"])
+
+        # Plano y en orden de entrega: por ADR-019 la evidencia es el espacio
+        # como quedó, no una carpeta por parte. Los agregadores tienen una sola
+        # copia —la de la última parte que los reescribió— y las lógicas de las
+        # tres conviven al lado.
+        esperado = {}
         for evento in entregadas:
-            uid = evento["payload"]["unidad"]
             entrega = cadena.entrega_de(self.store, evento["payload"]["run_developer"])
             for archivo in entrega["archivos"]:
-                destino = area / uid / archivo["ruta"]
-                self.assertTrue(destino.is_file(), "falta %s/%s" % (uid, archivo["ruta"]))
-                self.assertEqual(
-                    destino.read_text(encoding="utf-8"), archivo["contenido"]
-                )
+                esperado[archivo["ruta"]] = archivo["contenido"]
 
-        # El subdirectorio por unidad se conserva: sin él los nombres fijos del
-        # contrato se pisarían entre unidades, igual que en el área de trabajo.
+        for ruta, contenido in esperado.items():
+            destino = area / ruta
+            self.assertTrue(destino.is_file(), "falta %s" % ruta)
+            self.assertEqual(destino.read_text(encoding="utf-8"), contenido)
+
+        self.assertEqual(
+            sorted(esperado),
+            [
+                "demo.html", "pruebas.html",
+                "src/u1.js", "src/u2.js", "src/u3.js",
+                "tests/u1.test.js", "tests/u2.test.js", "tests/u3.test.js",
+            ],
+        )
         for uid in ("U1", "U2", "U3"):
-            self.assertTrue((area / uid / "pruebas.html").is_file())
-            self.assertTrue((area / uid / "demo.html").is_file())
+            self.assertFalse((area / uid).exists())
 
+        # Y se escribió en el orden en que las partes entregaron, no ordenado
+        # por nombre: con un área plana el orden es lo que decide quién gana
+        # cuando dos partes tocaron la misma ruta.
         (materializada,) = self.de_tipo(run, "evidencia_materializada")
         self.assertFalse(Path(materializada["payload"]["ruta"]).is_absolute())
         self.assertEqual(
             [u["unidad"] for u in materializada["payload"]["unidades"]],
-            ["U1", "U2", "U3"],
+            ["U1", "U3", "U2"],
         )
 
     def test_el_gate_firma_los_hashes_que_se_le_sometieron(self):
@@ -848,13 +909,21 @@ class EvidenciaDeEntrega(BaseCadena):
         self.assertEqual(resuelto["payload"]["firmado"], sometidos)
 
         # Y el hash firmado es el del archivo que quedó en el área de entregas.
+        # El área es plana, así que para los agregadores —lo único que dos partes
+        # pueden reescribir— el que queda es el de la última que los tocó. Se
+        # firma cada versión; sobrevive la final. `somete` viene ordenado por
+        # nombre de unidad, que no es el orden en que entregaron.
+        entregadas = [e["payload"]["unidad"] for e in self.de_tipo(run, "unidad_entregada")]
+        por_unidad = {u["unidad"]: u for u in somete["unidades"]}
+        firmados = {}
+        for uid in entregadas:
+            for archivo in por_unidad[uid]["archivos"]:
+                firmados[archivo["ruta"]] = archivo["sha256"]
+
         area = self.entregas_de(run)
-        for unidad in somete["unidades"]:
-            for archivo in unidad["archivos"]:
-                contenido = (area / unidad["unidad"] / archivo["ruta"]).read_text(
-                    encoding="utf-8"
-                )
-                self.assertEqual(cadena.sha256_de(contenido), archivo["sha256"])
+        for ruta, sha in firmados.items():
+            contenido = (area / ruta).read_text(encoding="utf-8")
+            self.assertEqual(cadena.sha256_de(contenido), sha)
 
     def test_el_gate_de_entrada_no_firma_nada_porque_no_somete_archivos(self):
         run, _, _ = self.correr_cadena()
@@ -1134,9 +1203,8 @@ class DepositoDeArtefactos(BaseCadena):
             plan=plan,
             unidad=unidad,
             contexto_unidades=[],
-            directorio=str(self.trabajo),
-            directorio_trabajo=cadena.directorio_de_unidad(str(self.trabajo), "U1"),
-            ya_depositado=[],
+            directorio=espacio.iniciar(self.trabajo),
+            inventario=[],
             entrega=None,
             incumplimientos=[],
             iteracion=0,

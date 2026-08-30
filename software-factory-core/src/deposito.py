@@ -41,6 +41,7 @@ que las dos convivan sin ensuciar cada consumidor.
 import hashlib
 from pathlib import Path
 
+import espacio
 from operational_state import absoluta_desde
 
 
@@ -123,7 +124,7 @@ def ruta_de_iteracion(raiz_entregas, run_developer, iteracion):
     return Path(raiz_entregas) / run_developer / str(iteracion)
 
 
-def depositar(entrega, destino):
+def depositar(entrega, destino, base=None):
     """Deposita el contenido y devuelve la entrega tal como va al evento.
 
     Relee cada archivo y lo compara contra el hash de lo que se quiso escribir.
@@ -134,7 +135,16 @@ def depositar(entrega, destino):
     Los otros campos —`rol`, `motivo`— son parte de qué se entregó y pesan
     nada; el contenido es lo único que hacía crecer el registro con el tamaño de
     lo producido en vez de con la cantidad de hechos.
+
+    `base` es el espacio de trabajo de la cadena, y desde ADR-019 el depósito
+    **arranca siendo una copia de él**: lo que QA ejecuta tiene que ser el espacio
+    entero, no la entrega suelta, o una parte que sólo agrega pruebas no tendría
+    contra qué correrlas. La entrega se escribe encima, así que lo que esta parte
+    produjo gana. Sólo se registran en el evento los archivos de la entrega: lo
+    que sembró la base ya lo registró la parte que lo entregó.
     """
+    if base is not None:
+        espacio.copiar_sin_git(base, destino)
     escribir_entrega(destino, entrega)
     raiz = Path(destino)
     archivos = []

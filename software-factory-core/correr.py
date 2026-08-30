@@ -115,11 +115,25 @@ def producir_entrega_stub(unidad, contexto_unidades, entrega_anterior, incumplim
     regenerarla, que es lo que exige el campo 9 de la Agent Definition. La única
     corrección que sabe hacer es reponer los archivos que falten, conservando
     intactos los que ya estaban.
+
+    Desde ADR-019 arma los dos HTML sobre **todo** el espacio: carga la lógica de
+    las partes anteriores además de la suya y muestra los casos de las dos. Sin
+    eso no pasaría C7, que es lo que paga la excepción que C10 les da a los
+    agregadores. El stub existe justamente para fijar la forma del contrato, así
+    que cuando el contrato cambia, cambia con él.
     """
     uid = unidad["id"]
     slug = uid.lower()
     funcion = "resolver%s" % uid
     ruta_logica = "src/%s.js" % slug
+    # Las partes anteriores, en orden, más la propia al final. El stub conoce su
+    # propia convención de nombres: `src/<uid>.js` declara `resolver<UID>`.
+    anteriores = [
+        (a["parte"], a["ruta"])
+        for a in (paquete or {}).get("inventario", [])
+        if a["ruta"].startswith("src/") and a["ruta"].endswith(".js")
+    ]
+    espacio = anteriores + [(uid, ruta_logica)]
 
     logica = (
         "// Unidad %s - producida por el stub del Developer. No hubo modelo.\n"
@@ -149,34 +163,46 @@ def producir_entrega_stub(unidad, contexto_unidades, entrega_anterior, incumplim
         "});\n" % (funcion, ruta_logica, funcion, funcion)
     )
 
+    scripts = "".join('<script src="./%s"></script>\n' % ruta for _, ruta in espacio)
+    # Cada caso invoca la función por su nombre: es lo que V3 exige ver.
+    casos = "".join(
+        '    { parte: "%s", entrada: "dato",\n'
+        '      esperado: { ok: true, motivo: null, valor: "dato" },\n'
+        '      obtenido: resolver%s("dato") },\n'
+        '    { parte: "%s", entrada: "",\n'
+        '      esperado: { ok: false, motivo: "vacio" },\n'
+        '      obtenido: resolver%s("") },\n' % (parte, parte, parte, parte)
+        for parte, _ in espacio
+    )
+
     pruebas_html = (
         "<!doctype html>\n"
         '<meta charset="utf-8">\n'
-        "<title>Pruebas - %s</title>\n"
-        '<script src="./%s"></script>\n'
+        "<title>Pruebas - espacio de trabajo</title>\n"
+        "%s"
         "\n"
-        "<h1>%s - criterios de aceptacion</h1>\n"
+        "<h1>Criterios de aceptacion de todas las partes</h1>\n"
         '<p id="resumen"></p>\n'
         '<table id="tabla" border="1" cellpadding="6">\n'
-        "  <tr><th>Entrada</th><th>Esperado</th><th>Obtenido</th><th>Veredicto</th></tr>\n"
+        "  <tr><th>Parte</th><th>Entrada</th><th>Esperado</th><th>Obtenido</th><th>Veredicto</th></tr>\n"
         "</table>\n"
         "\n"
         "<script>\n"
         "  const casos = [\n"
-        '    { entrada: "dato", esperado: { ok: true, motivo: null, valor: "dato" } },\n'
-        '    { entrada: "", esperado: { ok: false, motivo: "vacio" } },\n'
+        "%s"
         "  ];\n"
         "\n"
         "  let pasan = 0;\n"
         '  const tabla = document.getElementById("tabla");\n'
         "\n"
         "  for (const caso of casos) {\n"
-        "    const obtenido = %s(caso.entrada);\n"
+        "    const obtenido = caso.obtenido;\n"
         "    const paso = JSON.stringify(obtenido) === JSON.stringify(caso.esperado);\n"
         "    if (paso) pasan++;\n"
         "\n"
         "    const fila = tabla.insertRow();\n"
         '    fila.style.background = paso ? "#d8f5d8" : "#f5d8d8";\n'
+        "    fila.insertCell().textContent = caso.parte;\n"
         "    fila.insertCell().textContent = JSON.stringify(caso.entrada);\n"
         "    fila.insertCell().textContent = JSON.stringify(caso.esperado);\n"
         "    fila.insertCell().textContent = JSON.stringify(obtenido);\n"
@@ -185,27 +211,35 @@ def producir_entrega_stub(unidad, contexto_unidades, entrega_anterior, incumplim
         "\n"
         '  document.getElementById("resumen").textContent =\n'
         '    pasan + " de " + casos.length + " criterios pasan.";\n'
-        "</script>\n" % (uid, ruta_logica, uid, funcion)
+        "</script>\n" % (scripts, casos)
+    )
+
+    botones = "".join(
+        '<button id="resolver-%s">%s</button>\n' % (parte, parte) for parte, _ in espacio
+    )
+    manejadores = "".join(
+        '  document.getElementById("resolver-%s").addEventListener("click", () => {\n'
+        '    const r = resolver%s(document.getElementById("entrada").value);\n'
+        '    document.getElementById("resultado").textContent =\n'
+        '      r.ok ? "%s resolvio: " + r.valor : "%s rechazo - " + r.motivo;\n'
+        "  });\n" % (parte, parte, parte, parte)
+        for parte, _ in espacio
     )
 
     demo_html = (
         "<!doctype html>\n"
         '<meta charset="utf-8">\n'
-        "<title>Demo - %s</title>\n"
-        '<script src="./%s"></script>\n'
+        "<title>Demo - espacio de trabajo</title>\n"
+        "%s"
         "\n"
-        "<h1>%s</h1>\n"
+        "<h1>Partes entregadas</h1>\n"
         '<input id="entrada" placeholder="dato">\n'
-        '<button id="resolver">Resolver</button>\n'
+        "%s"
         '<p id="resultado"></p>\n'
         "\n"
         "<script>\n"
-        '  document.getElementById("resolver").addEventListener("click", () => {\n'
-        '    const r = %s(document.getElementById("entrada").value);\n'
-        '    document.getElementById("resultado").textContent =\n'
-        '      r.ok ? "Resuelto: " + r.valor : "Rechazado - " + r.motivo;\n'
-        "  });\n"
-        "</script>\n" % (uid, ruta_logica, uid, funcion)
+        "%s"
+        "</script>\n" % (scripts, botones, manejadores)
     )
 
     completos = {

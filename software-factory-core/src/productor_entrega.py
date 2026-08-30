@@ -84,13 +84,20 @@ C5 — Todo archivo que no sea uno de los cuatro entregables va con
 `rol: "auxiliar"` y un `motivo` que diga por qué existe. Los cuatro entregables
 van con `rol: "artefacto_esperado"`.
 
-C6 — Los cuatro entregables están y ninguno está vacío.
+C6 — Los cuatro entregables están **en el espacio de trabajo** y ninguno está
+vacío. Cuentan los que trae tu entrega más los que ya dejaron las partes
+anteriores: si la lógica ya está, no la vuelvas a traer.
 
-C7 — `pruebas.html` y `demo.html` cargan el archivo de lógica con
-`<script src="...">` y **ninguno de los dos reimplementa la función**. Dos copias
-de una función divergen en silencio.
+C7 — `pruebas.html` y `demo.html` cargan con `<script src="...">` **todos** los
+archivos de lógica que hay en el espacio, no sólo el tuyo, y **ninguno de los dos
+reimplementa una función**. Dos copias de una función divergen en silencio.
 
 C8 — No hay dos archivos con la misma ruta.
+
+C10 — Ningún archivo tuyo repite una ruta que otra parte ya depositó. Con el
+mismo contenido es duplicar y con contenido distinto es pisar algo aprobado; las
+dos se rechazan. `pruebas.html` y `demo.html` son la única excepción: se
+reescriben enteros por diseño.
 
 R1 — Ningún archivo pasa de 200 líneas.
 
@@ -120,32 +127,45 @@ asignado sin depender del resultado también.
 V5 — La entrega se resuelve sola: no hay nada que instalar ni que bajar. Sin
 `package.json` ni lockfiles. Sin `node_modules`. Todo `require` es de un builtin
 de Node —`node:test`, `node:assert`, `node:path`— o de una ruta relativa que
-queda dentro del directorio de la unidad; un nombre de paquete se rechaza. Sin
+queda dentro del directorio de trabajo; un nombre de paquete se rechaza. Sin
 `import` de paquete. Y el `src` de cada `<script>` es una ruta relativa dentro
 del directorio: nunca una URL, nunca un CDN.\
 """
 
 LOS_CUATRO_ENTREGABLES = """\
-Toda unidad produce exactamente cuatro archivos. No tres, no cinco.
+Son cuatro archivos. No tres, no cinco. **Son de la cadena, no tuyos**: lo que se
+exige es que los cuatro estén en el espacio de trabajo cuando cierres, no que los
+hayas producido todos vos.
 
 1. **El código de la lógica**, en JavaScript. Declarado como `function` global
    para que los dos HTML lo carguen con un `<script>` clásico, y exportado con
    `module.exports` al final para que el archivo de pruebas lo consuma desde
-   Node. Un solo archivo, una sola definición.
+   Node. Un archivo por parte, una sola definición de cada función.
 
 2. **El archivo de pruebas**, con `node:test` y `node:assert`. Un test por cada
    Acceptance Criterion de la unidad.
 
 3. **`pruebas.html`**, que se abre en cualquier navegador sin servidor y sin
    instalación. Carga la lógica con `<script src="...">` —**no** con `import` ni
-   `type="module"`, que no cargan desde `file://`—, ejecuta la función real
+   `type="module"`, que no cargan desde `file://`—, ejecuta las funciones reales
    contra los casos declarados en los criterios, y muestra cuáles pasaron. El
    veredicto sale de comparar lo que devolvió la función contra lo esperado.
 
 4. **`demo.html`**, una interfaz operable por una persona: entrada, acción y
-   resultado en pantalla, sin recargar. Carga el mismo archivo de lógica. El
+   resultado en pantalla, sin recargar. Carga los mismos archivos de lógica. El
    resultado se muestra en pantalla, no por consola: `console.log(` está
-   prohibido por R3.\
+   prohibido por R3.
+
+## Contenido y agregadores
+
+Los dos primeros son **contenido** y el espacio crece por agregado: sumás
+archivos propios y no tocás los de las partes anteriores.
+
+Los dos HTML son **agregadores**: existen para mostrar todo lo que hay en el
+espacio, así que los reescribís enteros incluyendo lo tuyo **y lo que ya estaba**.
+Si el espacio ya tiene lógica de otra parte, tu `pruebas.html` y tu `demo.html`
+la siguen cargando y siguen mostrando sus casos. Reescribirlos no es pisar trabajo
+ajeno: es lo único que pueden hacer.\
 """
 
 FORMA_DE_RESPUESTA = """\
@@ -262,47 +282,78 @@ def _contexto_de_dependencias(contexto_unidades):
     )
 
 
-def _donde_trabajas(paquete):
-    """Dónde aterrizan sus archivos y qué hay ya depositado. ADR-014 punto 1.
+def _inventario(depositado):
+    """La tabla de qué hay en el espacio, de quién es y con qué hash.
 
-    Va en el mensaje del turno y no en el system prompt: varía por unidad, y el
+    El hash va porque es lo que el agente necesita para entender el rechazo de
+    C10 cuando llega: sin él, "ya depositaste este archivo" no le dice si lo que
+    hizo fue copiar o pisar.
+    """
+    if not depositado:
+        return (
+            "El espacio está vacío: sos la primera parte. Todo lo que entregues "
+            "queda firmado para las que vengan después."
+        )
+    filas = "\n".join(
+        "| `%s` | %s | `%s` |" % (a["ruta"], a.get("parte", "?"), (a.get("sha256") or "")[:12])
+        for a in depositado
+    )
+    return """\
+Esto ya está en el espacio, firmado por las partes anteriores:
+
+| Archivo | Parte | SHA-256 |
+|---|---|---|
+{filas}
+
+**Lo firmado no se reabre.** No vuelvas a entregar ninguno de esos archivos: ni
+con el mismo contenido —eso es duplicar trabajo que ya está hecho— ni con
+contenido distinto —eso es pisar algo que ya se aprobó—. Las dos cosas las rechaza
+C10.
+
+Los dos únicos que sí reescribís son `pruebas.html` y `demo.html`, y los
+reescribís **enteros**: con lo tuyo y con lo que ya mostraban.
+
+Si tu unidad no se puede hacer sin modificar alguno de los otros, no la fuerces:
+devolvé la entrega vacía diciendo cuál y por qué. Reabrir lo aprobado es una
+decisión de una persona, no tuya.\
+""".format(filas=filas)
+
+
+def _donde_trabajas(paquete):
+    """Dónde aterrizan sus archivos y qué hay ya en el espacio. ADR-014 punto 1.
+
+    Va en el mensaje del turno y no en el system prompt: varía por parte, y el
     system prompt es el prefijo cacheado. Meter acá algo que cambia invalidaría
     el caché en cada unidad del plan.
 
-    Sin esta sección el agente decide a ciegas si sus nombres pisan los de otra
-    unidad. En la corrida real decidió que sí, renombró sus entregables y el
-    verificador se los rechazó por C5 y C6.
+    **Esta sección se dio vuelta con ADR-019.** Antes decía que el directorio era
+    de la unidad y de ninguna otra, y que por eso los nombres del contrato no
+    chocaban. Ahora el espacio es uno solo y compartido: lo que evita el choque no
+    es una pared sino saber qué hay adentro y que lo firmado no se toca.
     """
     paquete = paquete or {}
     directorio = paquete.get("directorio_trabajo")
     if not directorio:
         return ""
 
-    depositado = paquete.get("ya_depositado") or []
-    if depositado:
-        inventario = (
-            "Otras unidades ya depositaron esto en el directorio de la cadena, "
-            "cada una en su propia carpeta:\n\n%s\n\n**No los toques.** No están "
-            "en tu subdirectorio y no son tuyos." % "\n".join("- `%s`" % r for r in depositado)
-        )
-    else:
-        inventario = "Todavía no hay nada depositado: sos la primera unidad."
-
     return """
 # Dónde trabajás
 
-Tus archivos se depositan en `{directorio}`, que es **tuyo y de ninguna otra
-unidad**. Las rutas que declarás en la entrega son relativas a ese directorio.
+Tus archivos se depositan en `{directorio}`, que es el espacio de trabajo de la
+cadena entera. Las rutas que declarás en la entrega son relativas a ese
+directorio, y **lo compartís con las demás partes del plan**: las que ya
+entregaron dejaron sus archivos ahí y las que vengan después van a ver los tuyos.
 
-Por eso los nombres fijos del contrato —`pruebas.html`, `demo.html`— **no chocan**
-con los de otra unidad, aunque se llamen igual: cada unidad tiene su carpeta.
-Entregalos con el nombre que el contrato manda. No los renombres, no les agregues
-el identificador de la unidad y no inventes variantes para evitar una colisión
-que no existe: el verificador rechaza tanto el archivo que nadie pidió como el que
-falta.
+Ese espacio es lo que hace que puedas usar lo anterior sin copiarlo. Si necesitás
+la lógica de otra parte, `require` su archivo por su ruta relativa: está ahí, al
+lado del tuyo.
+
+Entregá los nombres fijos del contrato —`pruebas.html`, `demo.html`— tal como el
+contrato manda. No los renombres, no les agregues el identificador de la unidad y
+no inventes variantes: son los agregadores, y se reescriben.
 
 {inventario}
-""".format(directorio=directorio, inventario=inventario)
+""".format(directorio=directorio, inventario=_inventario(paquete.get("inventario")))
 
 
 def _mensaje_inicial(unidad, contexto_unidades, paquete=None):

@@ -126,21 +126,51 @@ entrega no se produce. Se escala. Es lo que dice la sección "Cuando no puede".
 
 ---
 
-## Los cuatro entregables por unidad
+## Los cuatro entregables de la cadena
 
-Toda unidad produce cuatro archivos. No tres, no cinco.
+Son cuatro archivos. No tres, no cinco.
 
-| # | Entregable | Para quién |
-|---|---|---|
-| 1 | El código de la lógica | La cadena |
-| 2 | El archivo de pruebas escrito | La automatización |
-| 3 | `pruebas.html` | El humano que verifica |
-| 4 | `demo.html` | El humano que decide |
+| # | Entregable | Para quién | Cómo cambia |
+|---|---|---|---|
+| 1 | El código de la lógica | La cadena | Crece por agregado |
+| 2 | El archivo de pruebas escrito | La automatización | Crece por agregado |
+| 3 | `pruebas.html` | El humano que verifica | Se reescribe entero |
+| 4 | `demo.html` | El humano que decide | Se reescribe entero |
 
 Los dos primeros son los que ya existen en cualquier repositorio. Los dos
 últimos son la condición para que un humano pueda cerrar un Gate sin instalar
 nada ni leer código: uno le muestra que la lógica cumple sus criterios, el otro
 le muestra la lógica funcionando.
+
+**Son de la cadena, no de la unidad.** Por ADR-019 las unidades de un plan son
+partes sucesivas sobre un mismo espacio de trabajo que crece, así que lo que se
+exige es que los cuatro **estén presentes en el espacio** al cerrar cada parte, no
+que cada parte los haya producido todos. Una parte cuyo trabajo es agregar
+pruebas cumple con la lógica que dejó la anterior.
+
+### Contenido y agregadores
+
+La última columna de la tabla no es descriptiva: es la que hace que una parte
+pueda agregar sin duplicar ni pisar.
+
+**El código de la lógica y el archivo de pruebas son contenido, y crecen por
+agregado.** Cada parte suma sus archivos y no toca los de las anteriores. Volver a
+escribir un archivo de contenido que ya está en el espacio se rechaza, y por dos
+motivos distintos según el caso: con el mismo contenido es **duplicar** —el
+trabajo ya estaba hecho—, y con contenido distinto es **modificar lo aprobado**,
+que ya tiene firma.
+
+**`pruebas.html` y `demo.html` son agregadores, y se reescriben enteros.** Existen
+para mostrar todo lo que hay en el espacio, así que la parte que agrega lógica los
+tiene que rehacer o dejan de mostrar lo nuevo. Reescribirlos no es pisar trabajo
+ajeno: es lo único que pueden hacer. Congelarlos sería congelar el resumen para
+proteger el contenido.
+
+**La distinción es por nombre y se declara acá**, no la decide quien verifica
+mirando el archivo. Los agregadores son exactamente dos y se llaman `pruebas.html`
+y `demo.html`. Todo lo demás es contenido, incluido un archivo que se llame
+`index.html`. Una regla que adivinara qué es un agregador se equivoca el día que
+alguien elija mal un nombre.
 
 ### `pruebas.html`
 
@@ -240,13 +270,18 @@ Una entrega que viole cualquiera de estas se rechaza sin llegar al Gate.
 4. Si la unidad declaró un artefacto esperado, ese archivo está en la entrega.
 5. Todo archivo que no es el artefacto esperado está declarado auxiliar y
    justificado.
-6. Están los cuatro entregables: lógica, pruebas, `pruebas.html`, `demo.html`.
+6. Están los cuatro entregables —lógica, pruebas, `pruebas.html`, `demo.html`—
+   presentes en el espacio de trabajo: los que trae la entrega más los que ya
+   dejaron las partes anteriores.
 7. `pruebas.html` y `demo.html` cargan el archivo de lógica; ninguno de los dos
    la reimplementa.
 8. No hay dos archivos con la misma ruta.
 9. La entrega no trae más campos que los tres declarados.
+10. Ningún archivo de contenido repite una ruta que otra parte ya depositó. Los
+    dos agregadores —`pruebas.html` y `demo.html`— son la única excepción, y lo
+    son por nombre.
 
-Las reglas 1 a 9 se comprueban leyendo la entrega, sin ejecutar nada. Eso es
+Las reglas 1 a 10 se comprueban leyendo la entrega, sin ejecutar nada. Eso es
 deliberado y es lo que la sección siguiente explica.
 
 ---
@@ -280,7 +315,7 @@ empieza a mentir.
 
 **En V0.2 nada de la entrega se ejecuta automáticamente.**
 
-El verificador revisa **estructura**: las nueve reglas de validez de más arriba.
+El verificador revisa **estructura**: las diez reglas de validez de más arriba.
 Comprueba presencia, forma y correspondencia con el plan. No corre las pruebas,
 no abre los HTML y no evalúa si el código hace lo que dice.
 
@@ -517,7 +552,7 @@ salida. El campo 6 de una unidad —artefacto esperado— pasa a tener consumido
 real: la regla de validez 4 se comprueba contra él. [[Agent Framework]]: el
 protocolo de traspaso deja de tener un solo artefacto que viaja; este contrato es
 el segundo y debe absorberlo o referenciarlo, no reescribirlo. [[Verification]]:
-la verificación estructural de V0.2 se aplica sobre las nueve reglas de acá, y
+la verificación estructural de V0.2 se aplica sobre las diez reglas de acá, y
 `pruebas.html` es el procedimiento de comprobación de los criterios de la unidad.
 [[Technology Stack]]: sin cambio — el Patrón A sigue siendo el patrón por defecto
 de lo que la fábrica produce; lo que se fija acá es el lenguaje de la unidad
