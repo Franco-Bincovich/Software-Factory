@@ -8,6 +8,14 @@ vive en este módulo: el prompt lo explica para no gastar tokens en casos que se
 van a descartar, pero la garantía está en `verificacion_sustantiva` y se prueba
 en `test_verificacion_sustantiva`. Afirmar acá que el prompt contiene la
 instrucción es afirmar que se le pidió, no que se cumpla.
+
+Vale igual para la derivación y para los supuestos. Un test que busca una frase
+en el prompt comprueba que el pedido llegó, nada más: si el modelo enuncia la
+promesa y después instancia otra cosa, esto pasa en verde. Se prueban porque
+**el pedido puede desaparecer sin que nada se rompa** —una reescritura del prompt
+que se lleve puesta la instrucción no la ve nadie— y porque los supuestos sí son
+plomería: que el campo de la entrega llegue al mensaje es un hecho verificable y
+es lo que faltaba.
 """
 
 import json
@@ -64,7 +72,11 @@ ENTREGA = {
             "contenido": "function validarLegajo() {}",
         }
     ],
-    "supuestos": [],
+    # Con la forma del supuesto que la corrida real produjo y QA nunca vio: una
+    # decisión sobre entradas que el plan no menciona. Sin esto en el mensaje, el
+    # caso `validarLegajo(null)` no se le ocurre a nadie.
+    "supuestos": ["El plan no dice qué hacer con entradas que no son string. "
+                  "Una entrada que no es string devuelve inválido."],
 }
 
 DEPOSITO = "/estado/trabajo/abc123/U2/iteracion-1"
@@ -196,7 +208,14 @@ class CalculoDeCosto(unittest.TestCase):
 # --- 4 — el prompt -----------------------------------------------------------
 
 
-class Prompt(unittest.TestCase):
+class ConPrompt(unittest.TestCase):
+    """Arma una llamada y expone sus dos mitades. No trae tests propios.
+
+    Es una base y no una superclase con tests para que heredarla no los vuelva a
+    correr: `test_conteos_declarados` cuenta métodos y una herencia que duplica
+    tests declara un número que no se corresponde con lo que se comprueba.
+    """
+
     def setUp(self):
         (self.casos, _), self.cliente = producir(
             {"respuesta": Respuesta(json.dumps({"casos": CASOS}))}
@@ -205,6 +224,8 @@ class Prompt(unittest.TestCase):
         self.sistema = self.llamada["system"][0]["text"]
         self.mensaje = self.llamada["messages"][0]["content"]
 
+
+class Prompt(ConPrompt):
     def test_el_prefijo_estable_se_cachea(self):
         self.assertEqual(
             self.llamada["system"][0]["cache_control"], {"type": "ephemeral"}
@@ -249,6 +270,107 @@ class Prompt(unittest.TestCase):
         self.assertIn(
             "no declara exclusiones", cliente.llamadas[0]["messages"][0]["content"]
         )
+
+
+# --- 4b — la derivación ------------------------------------------------------
+
+
+class Derivacion(ConPrompt):
+    """Que se le pida enunciar la promesa antes de instanciarla.
+
+    Es auditabilidad, no control: ver el encabezado de `productor_qa`. Lo que
+    estos tests custodian es que **el pedido no desaparezca**, porque una
+    reescritura del prompt que se lo lleve puesto no rompe nada más.
+    """
+
+    def test_pide_enunciar_la_promesa_antes_de_instanciar(self):
+        self.assertIn("Derivar son dos pasos", self.sistema)
+        self.assertIn("promete", self.sistema)
+
+    def test_la_pregunta_que_ancla_esta_escrita(self):
+        # Es la única prueba que el agente tiene para decidir si un caso deriva
+        # del criterio que cita. Si se cae, la derivación vuelve a ser un reflejo.
+        self.assertIn(
+            "¿queda desmentido lo que **este** criterio promete?", self.sistema
+        )
+
+    def test_ya_no_ensena_a_derivar_variando_entradas(self):
+        """El texto que produjo el sesgo, y la licencia que lo cerraba.
+
+        El prompt viejo daba cuatro entradas parecidas como ejemplo de derivación
+        y remataba con "todos esos derivan del mismo criterio". El modelo copió el
+        método: el caso vacío no derivó del criterio, derivó del párrafo.
+        """
+        self.assertNotIn("Todos esos derivan del mismo criterio", self.sistema)
+        self.assertIn("Variar la entrada no es derivar", self.sistema)
+
+    def test_el_procedimiento_pide_la_derivacion_y_no_la_mecanica(self):
+        self.assertIn("la derivación escrita", self.sistema)
+        self.assertNotIn("una frase que diga qué comprueba", self.sistema)
+
+
+# --- 4c — la custodia del quedarse corto -------------------------------------
+
+
+class QuedarseCorto(ConPrompt):
+    """El eje que faltaba.
+
+    `EL_LIMITE` custodiaba cinco veces que QA no exigiera de más y ninguna que un
+    caso probara el criterio del que cuelga. El modelo optimizó el único eje que
+    le dieron.
+    """
+
+    def test_el_limite_custodia_los_dos_lados(self):
+        self.assertIn("El límite corre para los dos lados", self.sistema)
+
+    def test_nombra_las_dos_formas_de_quedarse_corto(self):
+        self.assertIn("prueba menos de lo que el criterio promete", self.sistema)
+        self.assertIn("se cuelga del criterio más parecido", self.sistema)
+
+    def test_dice_que_ninguna_maquina_lo_va_a_atrapar(self):
+        # Sin esto el agente puede suponer que hay una red abajo, como la hay
+        # para el ancla fuera de rango y para la evidencia vacua.
+        self.assertIn("no lo puede comprobar ninguna máquina", self.sistema)
+
+    def test_prefiere_el_criterio_sin_caso_al_caso_falso(self):
+        self.assertIn("dejalo sin caso", self.sistema)
+
+
+# --- 4d — los supuestos de la entrega ----------------------------------------
+
+
+class SupuestosDeLaEntrega(ConPrompt):
+    """La única de las tres que es plomería y no prosa.
+
+    Que el campo de la entrega llegue al mensaje es un hecho verificable, y es
+    lo que faltaba: el Developer prometió algo y el que verifica no se enteró.
+    """
+
+    def test_los_supuestos_van_en_el_mensaje(self):
+        self.assertIn("no son string", self.mensaje)
+
+    def test_una_entrega_sin_supuestos_lo_dice(self):
+        # Ausencia declarada, no sección vacía: "no declaró" y "no le llegó" son
+        # cosas distintas y el agente tiene que poder distinguirlas.
+        (_, _), cliente = producir(
+            {"respuesta": Respuesta(json.dumps({"casos": CASOS}))},
+            entrega=dict(ENTREGA, supuestos=[]),
+        )
+        self.assertIn(
+            "no declaró supuestos", cliente.llamadas[0]["messages"][0]["content"]
+        )
+
+    def test_no_se_presentan_como_criterios(self):
+        self.assertIn("**No son criterios.**", self.mensaje)
+        self.assertIn("ninguna por supuesto", self.mensaje)
+
+    def test_ante_contradiccion_manda_el_criterio(self):
+        self.assertIn("manda el criterio", self.mensaje)
+
+    def test_un_caso_que_solo_comprueba_el_supuesto_no_prueba_el_plan(self):
+        # El riesgo de pasarle los supuestos: que QA verifique que el Developer
+        # hizo lo que dijo, en vez de que la unidad haga lo que el plan pidió.
+        self.assertIn("evaluándose a sí mismo con tu firma", self.mensaje)
 
 
 # --- 5 — parseo --------------------------------------------------------------

@@ -628,7 +628,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Cuatrocientos once tests, uno por cada fila de los criterios de
+Cuatrocientos veinticuatro tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -652,7 +652,7 @@ después y las piezas de V0.2:
 | `test_conteos_declarados.py` | 4 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
 | `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
 | `test_verificacion_sustantiva.py` | 40 | el anclaje, el veredicto por criterio, el invariante de la superficie de rechazo contra salidas fabricadas y el Control 4: que la evidencia dependa del artefacto |
-| `test_productor_qa.py` | 27 | el productor de casos de prueba, con cliente falso, y la Agent Definition del QA Agent |
+| `test_productor_qa.py` | 40 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, y la Agent Definition del QA Agent |
 | `test_qa_contra_defectos.py` | 16 | QA contra dos entregas reales del registro: acepta las correctas y rechaza cuatro defectos sembrados nombrando el criterio que cada uno rompió |
 
 Todo lo que toca el Operational State corre contra una base temporal que se
