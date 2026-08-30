@@ -503,15 +503,33 @@ directorio hermano del vault y de este repo, que es donde vive hoy:
 <hermana-del-repo>/software-factory-state/factory.db
 ```
 
-De ese mismo directorio cuelgan `trabajo/`, `entregas/` y `checkpointer/`. Una
-sola variable gobierna las cuatro rutas a propósito: con una variable por ruta,
-el estado podría quedar partido en discos distintos sin que nadie avise.
+De ese mismo directorio cuelgan `trabajo/`, `entregas/`, `ilegibles/` y
+`checkpointer/`. Una sola variable gobierna las cinco rutas a propósito: con una
+variable por ruta, el estado podría quedar partido en discos distintos sin que
+nadie avise.
 
 `trabajo/` y `entregas/` son hermanas y no la misma carpeta. La primera es
 descartable y se borra al aprobar el Gate de salida; la segunda es la evidencia
-de lo entregado —ADR-015— y sobrevive. La evidencia se escribe **desde los
-eventos**, no copiando el directorio de trabajo: por eso es derivable, y si
-alguna vez discrepara con el registro, gana el registro.
+de lo entregado —ADR-015— y sobrevive.
+
+**`entregas/` no es derivable del registro.** Lo fue hasta ADR-017, cuando el
+evento `entrega_producida` llevaba adentro el contenido de cada archivo y el área
+se podía regenerar borrándola. Desde ADR-017 punto 3 el evento lleva la ruta y el
+SHA-256, y el contenido existe **únicamente** en el área de entregas: un
+`factory.db` sin ella es un índice de archivos que ya no están, y ella sin
+`factory.db` es un montón de archivos sin corrida, sin fecha y sin aprobación. Se
+respaldan juntas o ninguna de las dos sirve. Lo que sí sigue haciendo el registro
+es mandar sobre qué debería haber en el depósito: el hash detecta una alteración
+posterior. Las corridas anteriores al cambio conservan el contenido en sus
+eventos y no se migraron —punto 2—, así que para ésas el área sigue siendo
+reconstruible.
+
+`ilegibles/` es la tercera. Guarda el texto de las respuestas que el modelo
+contestó y no se pudieron leer —truncadas contra el techo de salida, o que no
+son el JSON esperado—, con el evento `respuesta_ilegible` referenciándolo por
+ruta y hash. Está separada de `entregas/` porque el depósito de una iteración es
+una copia ejecutable del espacio de trabajo: una respuesta fallada ahí adentro
+aparecería en el contexto de la parte siguiente y en el árbol que QA corre.
 
 Si el directorio no existe, se crea al abrir el almacén. La ruta también es
 configurable por constructor; los tests siempre usan una base temporal.
@@ -528,9 +546,11 @@ procedimiento de respaldo se declara en Infrastructure, documento todavía
 bloqueado. Hasta entonces **el respaldo es manual y es responsabilidad del
 CEO.**
 
-`entregas/` entra en la misma categoría y hereda el mismo riesgo. Es regenerable
-desde los eventos —esa es la ventaja de derivarla del registro—, pero solo
-mientras el registro exista.
+`entregas/` no hereda el riesgo: lo **agrava**. R8 estaba enunciado sobre un solo
+activo, y desde ADR-017 son dos: el área de entregas dejó de ser una copia
+conveniente del registro y pasó a ser el único lugar donde el contenido existe.
+El respaldo tiene que cubrir las dos mitades en el mismo acto. `ilegibles/` es lo
+mismo en chico: lo que guarda no está en ningún otro lado.
 
 ## Armazón de ejecución (T14)
 
@@ -638,7 +658,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Cuatrocientos noventa tests, uno por cada fila de los criterios de
+496 tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -654,7 +674,7 @@ después y las piezas de V0.2:
 | `test_productor.py` | 29 | el criterio de aceptación de T15, el desglose del consumo y la tabla de precios verificada con sus cuatro contadores |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 50 | un defecto sembrado por regla sobre la entrega limpia, las tres reglas que miran el inventario del espacio y que C4 lea la ruta del campo y no de la prosa |
-| `test_cadena.py` | 71 | la cadena completa, el reintento, la detención, los dos techos de la cadena, el depósito de artefactos, el enganche de QA y qué hace cada nodo con una respuesta ilegible |
+| `test_cadena.py` | 77 | la cadena completa, el reintento, la detención, los dos techos de la cadena, el depósito de artefactos, el enganche de QA, y qué hace cada nodo con una respuesta ilegible y dónde queda guardado su texto |
 | `test_productor_entrega.py` | 33 | el productor de entregas, con cliente falso |
 | `test_correr_cadena.py` | 33 | la costura entre la CLI y la cadena, el régimen declarado y el encendido de QA |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |

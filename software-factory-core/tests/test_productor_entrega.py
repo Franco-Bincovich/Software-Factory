@@ -411,6 +411,7 @@ class RespuestaInutilizable(unittest.TestCase):
             producir({"respuesta": Respuesta("perdón, no puedo")})
         self.assertEqual(capturado.exception.motivo, "no_parseable")
         self.assertGreater(capturado.exception.consumo["costo"], 0)
+        self.assertEqual(capturado.exception.texto, "perdón, no puedo")
 
     def test_respuesta_cortada_por_max_tokens_dice_que_quedo_cortada(self):
         respuesta = Respuesta('{"unidad": "U2", "archi', stop_reason="max_tokens")
@@ -418,6 +419,9 @@ class RespuestaInutilizable(unittest.TestCase):
             producir({"respuesta": respuesta})
         self.assertEqual(capturado.exception.motivo, "truncada")
         self.assertGreater(capturado.exception.consumo["costo"], 0)
+        # Y se lleva lo que alcanzó a escribir: es lo único que después permite
+        # decir por qué no se pudo leer, y se descartaba en este mismo `raise`.
+        self.assertEqual(capturado.exception.texto, '{"unidad": "U2", "archi')
 
     def test_la_entrega_vacia_de_una_iteracion_mala_la_rechaza_el_verificador(self):
         veredicto = verificador_entrega.verificar({}, {"unidades": [UNIDAD]})

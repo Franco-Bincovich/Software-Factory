@@ -510,16 +510,24 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
         # sólo cuando **se pudo leer** que era vacía: `{"casos": []}` parsea y
         # llega abajo intacta. La línea no es cuántos casos hay, es si se entendió
         # lo que el modelo contestó.
+        #
+        # Las dos llevan el texto que el modelo alcanzó a escribir. Es lo único
+        # que permite después decir *por qué* no se pudo leer, y se descartaba
+        # acá mismo. Quién lo guarda es el grafo, contra el área de artefactos.
+        texto = _texto_de(respuesta)
         if respuesta.stop_reason == "max_tokens":
             raise RespuestaIlegible(
                 "truncada",
                 "el modelo llegó al techo de %d tokens de salida y la respuesta "
                 "quedó cortada." % MAX_TOKENS,
                 consumo=consumo,
+                texto=texto,
             )
         try:
-            return parsear_casos(_texto_de(respuesta)), consumo
+            return parsear_casos(texto), consumo
         except CasosNoParseables as error:
-            raise RespuestaIlegible("no_parseable", str(error), consumo=consumo)
+            raise RespuestaIlegible(
+                "no_parseable", str(error), consumo=consumo, texto=texto
+            )
 
     return producir

@@ -400,6 +400,9 @@ class RespuestaInutilizable(unittest.TestCase):
             producir(PEDIDO, None, [], CONTEXTO)
         self.assertEqual(capturado.exception.motivo, "no_parseable")
         self.assertGreater(capturado.exception.consumo["costo"], 0)
+        self.assertEqual(
+            capturado.exception.texto, "acá va el plan: enseguida lo escribo"
+        )
 
     def test_respuesta_cortada_por_max_tokens_dice_que_quedo_cortada(self):
         producir, _ = productor_con(
@@ -409,6 +412,9 @@ class RespuestaInutilizable(unittest.TestCase):
             producir(PEDIDO, None, [], CONTEXTO)
         self.assertEqual(capturado.exception.motivo, "truncada")
         self.assertIn(str(productor.MAX_TOKENS), capturado.exception.detalle)
+        # Y se lleva lo que alcanzó a escribir: es lo único que después permite
+        # decir por qué no se pudo leer, y se descartaba en este mismo `raise`.
+        self.assertEqual(capturado.exception.texto, '{"plan_id": "PLAN')
 
     def test_las_dos_causas_no_se_confunden(self):
         """Truncada y no parseable son fallas distintas y se cuentan distinto."""

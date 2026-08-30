@@ -427,12 +427,17 @@ class RespuestaDegradada(unittest.TestCase):
         self.assertEqual(capturado.exception.motivo, "truncada")
         self.assertIn(str(productor_qa.MAX_TOKENS), capturado.exception.detalle)
         self.assertGreater(capturado.exception.consumo["costo"], 0)
+        # Y se lleva lo que alcanzó a escribir. Sin esto no se puede saber
+        # después si intentó algo o se enredó desde el primer token, que es la
+        # pregunta que dos corridas truncadas seguidas dejaron sin respuesta.
+        self.assertEqual(capturado.exception.texto, "{\"casos\": [{\"crit")
 
     def test_una_respuesta_no_parseable_dice_que_no_se_pudo_parsear(self):
         with self.assertRaises(RespuestaIlegible) as capturado:
             producir({"respuesta": Respuesta("no sé qué probar")})
         self.assertEqual(capturado.exception.motivo, "no_parseable")
         self.assertGreater(capturado.exception.consumo["costo"], 0)
+        self.assertEqual(capturado.exception.texto, "no sé qué probar")
 
     def test_la_lista_vacia_que_se_pudo_leer_sigue_siendo_una_respuesta(self):
         """El silencio legítimo: QA contestó, y contestó que no hay nada que probar."""

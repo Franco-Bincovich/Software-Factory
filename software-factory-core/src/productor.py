@@ -539,16 +539,24 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
         # ciclo de corrección hace su trabajo. Lo que cambia es que ahora se dice
         # cuál de las dos fue, en vez de devolver `{}` a secas y dejar que el
         # registro no distinga una respuesta cortada de una ilegible.
+        #
+        # Las dos llevan el texto que el modelo alcanzó a escribir. Es lo único
+        # que permite después decir *por qué* no se pudo leer, y se descartaba
+        # acá mismo. Quién lo guarda es el grafo, contra el área de artefactos.
+        texto = _texto_de(respuesta)
         if respuesta.stop_reason == "max_tokens":
             raise RespuestaIlegible(
                 "truncada",
                 "el modelo llegó al techo de %d tokens de salida y la respuesta "
                 "quedó cortada." % MAX_TOKENS,
                 consumo=consumo,
+                texto=texto,
             )
         try:
-            return parsear_plan(_texto_de(respuesta)), consumo
+            return parsear_plan(texto), consumo
         except PlanNoParseable as error:
-            raise RespuestaIlegible("no_parseable", str(error), consumo=consumo)
+            raise RespuestaIlegible(
+                "no_parseable", str(error), consumo=consumo, texto=texto
+            )
 
     return producir
