@@ -9,13 +9,30 @@ Evalúa todas las reglas siempre; no corta en el primer incumplimiento. Esa list
 completa es lo que alimenta el prompt de corrección del reintento, igual que en
 T7. Si la entrega no valida contra el esquema, devuelve C0 y no evalúa el resto.
 
-Los identificadores dicen de dónde sale cada regla: `C` las nueve reglas de
+Los identificadores dicen de dónde sale cada regla: `C` las diez reglas de
 validez del Contrato de Entrega, `R` el Ruleset mecánico con su propio número,
 `P` las prohibiciones del contrato, y `V` lo que este verificador comprueba y no
 tiene número en ningún documento.
+
+## El inventario del espacio — ADR-019
+
+Desde ADR-019 las unidades de un plan son partes sucesivas sobre un mismo espacio
+de trabajo que crece, así que verificar una entrega mirándola sola dejó de
+alcanzar. El parámetro `inventario` trae lo que las partes anteriores ya
+depositaron —ruta, contenido, hash y parte firmante— y tres reglas lo consultan:
+
+- **C6** exige los cuatro entregables **en el espacio**, no en la entrega. Una
+  parte cuyo trabajo es agregar pruebas cumple con la lógica que dejó la anterior.
+- **C7** exige que los agregadores carguen **toda** la lógica del espacio, no sólo
+  la de esta parte. Es lo que paga la excepción que C10 les da.
+- **C10** rechaza volver a escribir un archivo de contenido que ya está.
+
+Sin inventario —el verificador corrido a mano, o la primera parte de una cadena—
+las tres se comportan como antes de ADR-019, que es el caso de una parte única.
 """
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -45,11 +62,20 @@ RE_IDENTIFICADOR = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z]+(?:[A-
 # Existe para que el prompt del productor de entregas no se desvíe de lo que acá
 # se comprueba de verdad: hay un test que exige que el prompt nombre cada uno.
 REGLAS = (
-    "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8",
+    "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C10",
     "R1", "R3", "R8",
     "P1", "P2", "P3",
     "V1", "V2", "V3", "V4", "V5",
 )
+
+# Los dos agregadores del Contrato de Entrega. Existen para mostrar todo lo que
+# hay en el espacio, así que la parte que agrega lógica los reescribe enteros o
+# dejan de mostrar lo nuevo: son la única excepción a C10.
+#
+# **La distinción es por nombre y la declara el contrato**, no la decide este
+# código mirando el archivo. Una heurística que adivinara qué es un agregador se
+# equivoca el día que alguien llame `index.html` a la lógica.
+AGREGADORES = ("pruebas.html", "demo.html")
 
 
 def _incumplimiento(regla, detalle, archivo=None):
@@ -63,6 +89,30 @@ def cargar_esquema(ruta=SCHEMA_PATH):
 
 def _base(ruta):
     return ruta.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
+def _normal(ruta):
+    return ruta.replace("\\", "/")
+
+
+def _sha256(contenido):
+    """El mismo hash que `deposito.sha256_de`, calculado sin importar el depósito.
+
+    Este módulo es un verificador que no toca disco ni Operational State, y se
+    corre a mano por línea de comandos. Traerse `deposito` para una línea de
+    `hashlib` le colgaría esa cadena de imports encima.
+    """
+    return hashlib.sha256(contenido.encode("utf-8")).hexdigest()
+
+
+def _es_agregador(ruta):
+    return _base(ruta).lower() in AGREGADORES
+
+
+def es_prueba(ruta):
+    normalizada = _normal(ruta)
+    base = _base(normalizada).lower()
+    return "test" in base or "spec" in base or normalizada.startswith("tests/")
 
 
 # --- C0 — esquema -----------------------------------------------------------
@@ -91,10 +141,42 @@ def _entregables(archivos):
         elif base == "demo.html":
             hallado["demo_html"] = hallado["demo_html"] or archivo
         elif ins.es_js(ruta):
-            es_prueba = "test" in base or "spec" in base or ruta.replace("\\", "/").startswith("tests/")
-            clave = "pruebas" if es_prueba else "logica"
+            clave = "pruebas" if es_prueba(ruta) else "logica"
             hallado[clave] = hallado[clave] or archivo
     return hallado
+
+
+def _logicas(archivos):
+    """**Todos** los archivos de lógica, no el primero.
+
+    `_entregables` devuelve uno solo porque describe los cuatro roles del
+    contrato, y hasta ADR-019 no había más que uno por unidad aislada. En un
+    espacio que acumula, la parte 2 deja su lógica al lado de la de la parte 1 y
+    los agregadores tienen que cargar las dos.
+
+    Los auxiliares quedan afuera. Un `.js` declarado auxiliar existe por el
+    motivo que C5 le exige declarar y no es uno de los cuatro entregables:
+    exigirle a los agregadores que lo carguen sería inventar un incumplimiento
+    de C7 cada vez que una entrega trae un archivo de apoyo.
+    """
+    return [
+        a for a in archivos
+        if ins.es_js(a["ruta"])
+        and not es_prueba(a["ruta"])
+        and a.get("rol") != "auxiliar"
+    ]
+
+
+def _archivos_del_espacio(entrega, inventario):
+    """Cómo queda el espacio si esta entrega se deposita.
+
+    Los archivos de la entrega van primero y ganan la ruta: son lo que esta parte
+    produjo, y C10 ya rechazó los casos en que pisar lo anterior no es legítimo.
+    """
+    propias = {_normal(a["ruta"]) for a in entrega["archivos"]}
+    return list(entrega["archivos"]) + [
+        a for a in inventario if _normal(a["ruta"]) not in propias
+    ]
 
 
 NOMBRE_ENTREGABLE = {
@@ -241,13 +323,18 @@ def _entrega_vacia(entrega):
     ]
 
 
-def _c6(entrega, entregables):
-    """Los cuatro entregables presentes y ninguno vacío."""
+def _c6(en_el_espacio):
+    """Los cuatro entregables presentes en el espacio y ninguno vacío.
+
+    **En el espacio, no en la entrega.** Por ADR-019 los cuatro son de la cadena:
+    una parte cuyo trabajo es agregar pruebas cumple con la lógica que dejó la
+    anterior, y exigirle que la vuelva a traer sería exigirle que viole C10.
+    """
     fallos = []
-    for clave, archivo in entregables.items():
+    for clave, archivo in en_el_espacio.items():
         nombre = NOMBRE_ENTREGABLE[clave]
         if archivo is None:
-            fallos.append(_incumplimiento("C6", "Falta %s." % nombre))
+            fallos.append(_incumplimiento("C6", "Falta %s en el espacio de trabajo." % nombre))
         elif not archivo["contenido"].strip():
             fallos.append(
                 _incumplimiento("C6", "%s está vacío." % nombre.capitalize(), archivo=archivo["ruta"])
@@ -255,19 +342,26 @@ def _c6(entrega, entregables):
     return fallos
 
 
-def _c7(entregables, funciones):
-    """Los dos HTML cargan el archivo de lógica y ninguno lo reimplementa."""
-    logica = entregables["logica"]
-    if logica is None:
+def _c7(entregables, logicas, funciones):
+    """Los agregadores cargan toda la lógica del espacio y ninguno la reimplementa.
+
+    **Toda, no la de esta parte.** Es lo que paga la excepción que C10 les da:
+    si se los exceptúa de no reescribir porque agregan, entonces tienen que
+    agregar. Un `pruebas.html` de la parte 2 que sólo cargue la lógica de la
+    parte 2 no reescribió el resumen, lo achicó.
+    """
+    if not logicas:
         return []
-    base_logica = _base(logica["ruta"])
     fallos = []
     for clave in ("pruebas_html", "demo_html"):
         archivo = entregables[clave]
         if archivo is None:
             continue
         contenido = archivo["contenido"]
-        if base_logica not in {_base(src) for src in ins.scripts_externos(contenido)}:
+        cargados = {_base(src) for src in ins.scripts_externos(contenido)}
+        for logica in logicas:
+            if _base(logica["ruta"]) in cargados:
+                continue
             fallos.append(
                 _incumplimiento(
                     "C7",
@@ -277,13 +371,12 @@ def _c7(entregables, funciones):
                 )
             )
         inline = "\n".join(ins.scripts_inline(contenido))
-        repetidas = sorted(set(ins.funciones_declaradas(inline)) & set(funciones))
-        if repetidas:
+        for nombre in sorted(set(ins.funciones_declaradas(inline)) & set(funciones)):
             fallos.append(
                 _incumplimiento(
                     "C7",
                     "Reimplementa la lógica: declara %s, que ya está en '%s'."
-                    % (", ".join(repetidas), logica["ruta"]),
+                    % (nombre, funciones[nombre]),
                     archivo=archivo["ruta"],
                 )
             )
@@ -301,6 +394,52 @@ def _c8(entrega):
         _incumplimiento("C8", "La entrega trae dos archivos con la misma ruta.", archivo=ruta)
         for ruta in repetidas
     ]
+
+
+def _c10(entrega, inventario):
+    """Ningún archivo de contenido repite una ruta que otra parte ya depositó.
+
+    Las dos ramas son fallas distintas y el detalle las distingue, porque lo que
+    el Developer tiene que hacer también es distinto:
+
+    - **Mismo hash: duplicar.** El trabajo ya estaba hecho. Se saca el archivo de
+      la entrega y listo; el archivo sigue estando en el espacio.
+    - **Hash distinto: modificar lo firmado.** No se corrige sacando nada: o la
+      parte se replantea para agregar en vez de pisar, o —si la unidad no se
+      puede hacer sin reabrir lo aprobado— escala, que es el punto 6 de ADR-019.
+
+    Los dos agregadores quedan exceptuados **por nombre**, ver `AGREGADORES`.
+    """
+    ya_esta = {_normal(a["ruta"]): a for a in inventario}
+    fallos = []
+    for archivo in entrega["archivos"]:
+        ruta = _normal(archivo["ruta"])
+        anterior = ya_esta.get(ruta)
+        if anterior is None or _es_agregador(ruta):
+            continue
+        if anterior["sha256"] == _sha256(archivo["contenido"]):
+            fallos.append(
+                _incumplimiento(
+                    "C10",
+                    "La parte %s ya depositó este archivo con el mismo contenido. "
+                    "No lo entregues de nuevo: ya está en el espacio de trabajo y "
+                    "podés usarlo tal como está." % anterior["parte"],
+                    archivo=ruta,
+                )
+            )
+        else:
+            fallos.append(
+                _incumplimiento(
+                    "C10",
+                    "La parte %s ya depositó este archivo y esta entrega lo "
+                    "reescribe con otro contenido. Lo aprobado no se reabre: "
+                    "agregá archivos propios en vez de modificarlo, y si la unidad "
+                    "no se puede hacer sin reabrirlo, entregá vacío declarando ese "
+                    "motivo para que la decisión escale." % anterior["parte"],
+                    archivo=ruta,
+                )
+            )
+    return fallos
 
 
 # --- V2 — los nombres de los criterios aparecen en el código ----------------
@@ -344,9 +483,14 @@ def _v2(entrega, unidad):
 # --- Orquestación -----------------------------------------------------------
 
 
-def verificar(entrega, plan, esquema=None):
-    """Devuelve el veredicto de la entrega. No ejecuta nada de lo que revisa."""
+def verificar(entrega, plan, esquema=None, inventario=None):
+    """Devuelve el veredicto de la entrega. No ejecuta nada de lo que revisa.
+
+    `inventario` es lo que las partes anteriores dejaron en el espacio de trabajo:
+    una lista de `{ruta, contenido, sha256, parte}`. Ver el encabezado del módulo.
+    """
     esquema = cargar_esquema() if esquema is None else esquema
+    inventario = inventario or []
 
     fallos_esquema = _c0(entrega, esquema)
     if fallos_esquema:
@@ -357,8 +501,18 @@ def verificar(entrega, plan, esquema=None):
 
     unidad = next((u for u in plan["unidades"] if u["id"] == entrega["unidad"]), None)
     entregables = _entregables(entrega["archivos"])
-    logica = entregables["logica"]
-    funciones = ins.funciones_declaradas(logica["contenido"]) if logica else []
+    espacio = _archivos_del_espacio(entrega, inventario)
+    en_el_espacio = _entregables(espacio)
+    logicas = _logicas(espacio)
+    # Nombre de función -> archivo del espacio que la declara. C7 lo necesita
+    # para decir en cuál está la que el agregador reimplementó; R8 y V3 sólo
+    # miran los nombres, y les alcanza con que la lógica sea la del espacio.
+    funciones = {
+        nombre: logica["ruta"]
+        for logica in logicas
+        for nombre in ins.funciones_declaradas(logica["contenido"])
+    }
+    nombres = list(funciones)
 
     incumplimientos = []
     incumplimientos += _c1(entrega, plan)
@@ -366,9 +520,10 @@ def verificar(entrega, plan, esquema=None):
     incumplimientos += _c3(entrega)
     incumplimientos += _c4(entrega, unidad)
     incumplimientos += _c5(entrega, entregables)
-    incumplimientos += _c6(entrega, entregables)
-    incumplimientos += _c7(entregables, funciones)
+    incumplimientos += _c6(en_el_espacio)
+    incumplimientos += _c7(entregables, logicas, funciones)
     incumplimientos += _c8(entrega)
+    incumplimientos += _c10(entrega, inventario)
     incumplimientos += _v2(entrega, unidad)
 
     for archivo in entrega["archivos"]:
@@ -381,12 +536,12 @@ def verificar(entrega, plan, esquema=None):
 
     if entregables["pruebas"] is not None:
         incumplimientos += ins.r8_tests(
-            entregables["pruebas"]["ruta"], entregables["pruebas"]["contenido"], funciones
+            entregables["pruebas"]["ruta"], entregables["pruebas"]["contenido"], nombres
         )
     if entregables["pruebas_html"] is not None:
         pruebas_html = entregables["pruebas_html"]
         incumplimientos += ins.v3_invoca_la_funcion(
-            pruebas_html["ruta"], pruebas_html["contenido"], funciones
+            pruebas_html["ruta"], pruebas_html["contenido"], nombres
         )
         incumplimientos += ins.v4_veredictos_fijos(pruebas_html["ruta"], pruebas_html["contenido"])
 

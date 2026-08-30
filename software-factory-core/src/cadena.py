@@ -27,6 +27,7 @@ import shutil
 from pathlib import Path
 
 import deposito
+import espacio
 import grafo_developer
 import operational_state
 import presupuesto
@@ -192,44 +193,92 @@ def costo_de_la_cadena(store, run_pedido, runs_developer):
 
 
 def crear_directorio(raiz, run_pedido):
-    """Uno por corrida de plan, descartable, fuera del repositorio y del Vault."""
-    ruta = Path(raiz) / run_pedido
-    ruta.mkdir(parents=True, exist_ok=True)
-    return str(ruta)
+    """Uno por corrida de plan, descartable, fuera del repositorio y del Vault.
 
-
-def directorio_de_unidad(directorio, unidad_id):
-    """Cada unidad escribe en su propio subdirectorio, y no es un detalle.
-
-    El Contrato de Entrega fija los nombres `pruebas.html` y `demo.html`, iguales
-    para toda unidad. Dos unidades escribiendo en la misma carpeta se pisarían
-    los dos archivos que existen justamente para que una persona verifique. Las
-    rutas de la entrega siguen siendo relativas a su unidad; el prefijo lo pone
-    la plataforma al depositarla.
+    Y **versionado**: desde ADR-019 es un solo espacio para todas las unidades,
+    así que la contención que antes daba el subdirectorio la da ahora el commit
+    de cada parte aprobada. `espacio.iniciar` es idempotente y se llama también al
+    reanudar; ver el encabezado de `espacio`.
     """
-    return str(Path(directorio) / unidad_id)
+    return espacio.iniciar(Path(raiz) / run_pedido)
 
 
-def ya_depositado(entregas_por_unidad):
-    """El inventario del directorio de la cadena, en rutas relativas a su raíz.
+def inventario_del_espacio(entregas_por_unidad):
+    """Qué hay en el espacio de trabajo, de quién es y con qué contenido.
 
-    Es la mitad del paquete que ADR-014 exige: el domicilio no alcanza si el
-    agente no sabe qué hay ahí. Con esta lista, la decisión que en la corrida
-    real se tomó a ciegas —¿piso lo que dejó U1?— deja de ser una decisión.
+    Una lista de `{ruta, rol, contenido, sha256, parte}`. Es el paquete que
+    ADR-014 punto 1 exige —el domicilio no alcanza si el agente no sabe qué hay
+    ahí— y desde ADR-019 es además lo que hace comprobable la regla C10: sin el
+    hash no se puede distinguir duplicar de pisar.
+
+    El `rol` viaja porque C7 lo necesita: un `.js` auxiliar no es lógica que los
+    agregadores tengan que cargar, y sin el rol el verificador no puede saberlo.
+
+    **Sin subdirectorio por unidad.** Las rutas son las de la entrega tal cual,
+    porque todas las partes escriben en el mismo espacio.
+
+    **En orden de entrega, y el último gana.** Si dos partes dejaron la misma
+    ruta, la que vale es la última que se firmó: es el estado real del disco. El
+    orden alfabético diría otra cosa el día que `U10` entregue antes que `U2`.
 
     **Sale del Operational State, no del disco.** ADR-003 manda que lo que un
     agente lee se declare, y ADR-014 descartó por eso la opción de mirar la
     carpeta. Además, leer del registro es lo que hace que una cadena reanudada
     reciba exactamente el mismo inventario que la original.
 
-    Vacía para la primera unidad, porque todavía no hay nada depositado.
+    Vacío para la primera parte, porque todavía no hay nada depositado.
     """
-    inventario = []
-    for uid in sorted(entregas_por_unidad):
-        entrega = entregas_por_unidad[uid] or {}
-        for archivo in entrega.get("archivos", []):
-            inventario.append("%s/%s" % (uid, archivo["ruta"]))
-    return inventario
+    por_ruta = {}
+    for uid, entrega in entregas_por_unidad.items():
+        for archivo in (entrega or {}).get("archivos", []):
+            por_ruta[archivo["ruta"].replace("\\", "/")] = {
+                "ruta": archivo["ruta"].replace("\\", "/"),
+                "rol": archivo.get("rol"),
+                "contenido": archivo["contenido"],
+                "sha256": sha256_de(archivo["contenido"]),
+                "parte": uid,
+            }
+    return list(por_ruta.values())
+
+
+def ultima_parte_firmada(store, run_pedido):
+    """El commit de la última parte que la plataforma firmó, o `None`.
+
+    Sale del registro y no de `git log`: lo que vale es la parte que el
+    Operational State reconoce como aprobada, no la que quedó en el disco.
+    """
+    commit = None
+    for evento in store.leer_run(run_pedido):
+        if evento["tipo"] == "parte_firmada":
+            commit = evento["payload"]["commit"]
+    return commit
+
+
+def reconciliar(store, run_pedido, directorio, entregas_por_unidad):
+    """Devuelve el espacio al estado que el registro dice que tiene.
+
+    Es el punto de retorno de ADR-019 punto 2 puesto a andar, y la reanudación es
+    su primer uso. Una corrida que se cortó pudo dejar el espacio en cualquiera de
+    tres estados: a mitad de escribir una parte que nadie aprobó, con una parte
+    escrita y sin firmar, o firmada sin que el registro se enterara. Los tres se
+    resuelven igual:
+
+    1. Volver al último commit que el registro reconoce como parte firmada.
+       `volver` limpia también lo no versionado, que es lo que borra la parte
+       escrita a medias.
+    2. Reescribir encima lo que el registro dice que se entregó. Por el punto 4
+       de ADR-006 el Operational State manda cuando difiere del checkpointer;
+       acá manda también sobre el disco.
+
+    Sin commits todavía no hay a dónde volver —la corrida se cortó antes de firmar
+    nada—, así que alcanza con reescribir.
+    """
+    firmado = ultima_parte_firmada(store, run_pedido)
+    if firmado is not None:
+        espacio.volver(directorio, firmado)
+    for entrega in entregas_por_unidad.values():
+        if entrega is not None:
+            escribir_entrega(directorio, entrega)
 
 
 class EvidenciaIncompleta(RuntimeError):
@@ -260,13 +309,16 @@ def materializar_evidencia(store, run_pedido, raiz=None):
     todavía no se sabía que iba a haber aprobación. Uno respalda el evento y el
     otro es lo que se le entrega a un tercero.
 
-    Conserva el subdirectorio por unidad, por la misma razón que lo conserva el
-    área de trabajo: los nombres del contrato son iguales para toda unidad y sin
-    la carpeta se pisarían entre sí.
+    **Plano, sin subdirectorio por unidad.** Por ADR-019 las unidades son partes
+    sucesivas sobre un mismo espacio, así que la evidencia se escribe como el
+    espacio quedó: en el orden en que las partes entregaron, y si dos tocaron la
+    misma ruta gana la última, igual que en el disco. Separarlas por carpeta
+    entregaría algo que nunca existió y que no abre —`demo.html` de la parte 2
+    carga la lógica de la 1, que estaría en otro directorio—.
     """
     destino = Path(raiz) if raiz is not None else raiz_entregas() / run_pedido
     materializadas = []
-    for uid, run_developer in sorted(unidades_entregadas(store, run_pedido).items()):
+    for uid, run_developer in unidades_entregadas(store, run_pedido).items():
         entrega = entrega_de(store, run_developer)
         if entrega is None:
             raise EvidenciaIncompleta(
@@ -274,7 +326,7 @@ def materializar_evidencia(store, run_pedido, raiz=None):
                 "pero esa corrida no registró ninguna entrega."
                 % (uid, run_pedido, run_developer)
             )
-        escritos = escribir_entrega(directorio_de_unidad(destino, uid), entrega)
+        escritos = escribir_entrega(destino, entrega)
         materializadas.append({"unidad": uid, "archivos": escritos})
 
     store.append(
@@ -528,7 +580,8 @@ def nodo_ejecutar_unidades(
         techo_cadena = estado["techo_cadena"]
 
         directorio = directorio_registrado(store, run_pedido)
-        if directorio is None:
+        reanuda = directorio is not None
+        if not reanuda:
             directorio = crear_directorio(raiz_trabajo, run_pedido)
             store.append(
                 run_pedido,
@@ -536,11 +589,16 @@ def nodo_ejecutar_unidades(
                 PLATAFORMA,
                 {"ruta": relativa_a(directorio, _base())},
             )
+        else:
+            espacio.iniciar(directorio)
 
         unidades_por_id = {u["id"]: u for u in plan["unidades"]}
         hechas = unidades_entregadas(store, run_pedido)
         entregas_por_unidad = {uid: entrega_de(store, run) for uid, run in hechas.items()}
         runs = list(hechas.values())
+
+        if reanuda:
+            reconciliar(store, run_pedido, directorio, entregas_por_unidad)
 
         for unidad in orden_topologico(plan):
             if unidad["id"] in hechas:
@@ -563,7 +621,7 @@ def nodo_ejecutar_unidades(
             resultado = _correr_unidad(
                 store, unidad, plan, unidades_por_id, entregas_por_unidad, run_pedido,
                 definicion_developer, definicion_dict, techos_developer, directorio,
-                ya_depositado(entregas_por_unidad),
+                inventario_del_espacio(entregas_por_unidad),
                 producir_entrega_fn, ruta_vault, costo_iteracion,
                 qa_fn, definicion_qa_dict,
             )
@@ -600,11 +658,23 @@ def nodo_ejecutar_unidades(
                     "resultado": "escalado_por_unidad_fallida",
                 }
 
-            escribir_entrega(
-                directorio_de_unidad(directorio, unidad["id"]), resultado["entrega"]
-            )
+            escribir_entrega(directorio, resultado["entrega"])
+            commit = espacio.firmar(directorio, _asunto(unidad))
             hechas[unidad["id"]] = resultado["run_id"]
             entregas_por_unidad[unidad["id"]] = resultado["entrega"]
+            # El SHA no es reproducible —lo determinan también la fecha y el
+            # autor—, así que por el punto 1 de ADR-011 es un hecho y va al
+            # registro: regenerar la corrida no lo recupera.
+            store.append(
+                run_pedido,
+                "parte_firmada",
+                PLATAFORMA,
+                {
+                    "unidad": unidad["id"],
+                    "run_developer": resultado["run_id"],
+                    "commit": commit,
+                },
+            )
             store.append(
                 run_pedido,
                 "unidad_entregada",
@@ -618,6 +688,17 @@ def nodo_ejecutar_unidades(
         }
 
     return nodo
+
+
+def _asunto(unidad):
+    """El mensaje del commit de una parte: su identificador y su enunciado.
+
+    Una línea sola, porque `git log --oneline` sobre el espacio es la lista de
+    partes firmadas y ahí es donde se lee. Un enunciado de varios renglones se
+    corta en el primero por la misma razón.
+    """
+    enunciado = (unidad.get("enunciado") or "").strip().splitlines()
+    return "%s — %s" % (unidad["id"], enunciado[0] if enunciado else "sin enunciado")
 
 
 def _no_verificables(store, run_developer):
@@ -656,7 +737,6 @@ def _resumen(store, entregas_por_unidad, hechas):
         {
             "unidad": uid,
             "run_developer": hechas[uid],
-            "subdirectorio": uid,
             "archivos": [
                 {"ruta": a["ruta"], "sha256": sha256_de(a["contenido"])}
                 for a in (entregas_por_unidad.get(uid) or {}).get("archivos", [])
@@ -704,11 +784,11 @@ def _correr_unidad(
         unidad=unidad,
         contexto_unidades=contexto_de(unidad, unidades_por_id, entregas_por_unidad),
         directorio=directorio,
-        # ADR-014 punto 1: el domicilio y el inventario. El subdirectorio se
-        # calculaba antes recién al depositar, o sea después de producir: el
-        # agente decidía sin saber dónde aterrizaba lo que estaba escribiendo.
-        directorio_trabajo=directorio_de_unidad(directorio, unidad["id"]),
-        ya_depositado=inventario,
+        # ADR-014 punto 1: el domicilio y el inventario. Desde ADR-019 el
+        # domicilio es el mismo para todas las partes —`directorio`— y lo que
+        # cambia entre una y otra es el inventario: qué hay ya en el espacio, de
+        # quién es y con qué hash.
+        inventario=inventario,
         entrega=None,
         incumplimientos=[],
         iteracion=0,
@@ -741,17 +821,18 @@ __all__ = [
     "contexto_de",
     "costo_de_la_cadena",
     "crear_directorio",
-    "directorio_de_unidad",
     "directorio_registrado",
     "entrega_de",
     "escribir_entrega",
+    "inventario_del_espacio",
     "materializar_evidencia",
     "nodo_ejecutar_unidades",
     "orden_topologico",
     "preparar_herencia",
     "raiz_entregas",
+    "reconciliar",
     "sha256_de",
     "techo_heredado",
+    "ultima_parte_firmada",
     "unidades_entregadas",
-    "ya_depositado",
 ]

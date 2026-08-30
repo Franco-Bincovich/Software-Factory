@@ -36,6 +36,22 @@ que ya existía, sin un segundo bucle y sin un techo nuevo.
 El grafo **sin `qa_fn` no tiene nodo `qa`**, en vez de tener uno que no hace
 nada. Un grafo que dice tener verificación sustantiva y no la corre miente sobre
 sí mismo en el único lugar donde alguien iría a mirar.
+
+## Dónde entra la regresión — ADR-019
+
+El nodo `regresion` se inserta en esa misma arista `valido`, **antes** de `qa`.
+Corre la suite de pruebas de las partes ya firmadas sobre el depósito de esta
+iteración, que desde ADR-019 es el espacio entero con la entrega nueva adentro.
+
+Antes de QA y no después porque no cuesta un token: si esta parte rompió algo
+aprobado, no tiene sentido pagarle a un modelo para que además mire si lo nuevo
+anda. Y no tiene nodo condicional propio —está siempre, con `qa_fn` o sin él—
+porque a diferencia de QA no depende de ninguna definición: con una sola parte
+firmada no hay pruebas anteriores y devuelve la lista vacía.
+
+Sus incumplimientos vuelven por el mismo bucle de corrección, con la misma forma
+`{regla, archivo, detalle}` y contra el mismo techo de iteraciones. Un `REG-U1`
+en la lista le dice al Developer de U2 qué rompió sin abrir un segundo bucle.
 """
 
 from typing import Any, Dict, List, Optional, TypedDict
@@ -46,6 +62,7 @@ import deposito
 import ejecutor
 import operational_state
 import presupuesto
+import regresion
 import verificacion_sustantiva
 import verificador_entrega
 from grafo import (
@@ -69,9 +86,12 @@ class EstadoDeveloper(TypedDict):
     C1, C4 y V2 se comprueban contra la unidad tal como el plan la declara, no
     contra una copia que el Developer pudiera haber tocado.
 
-    `directorio` es el de la cadena entera; `directorio_trabajo` es el de esta
-    unidad. Son dos cosas distintas y la que le importa al agente es la segunda:
-    es el domicilio que ADR-014 exige que reciba.
+    `directorio` es el espacio de trabajo de la cadena, y desde ADR-019 es
+    **también el de esta parte**: no hay más subdirectorio por unidad. Es el
+    domicilio que ADR-014 exige que el agente reciba.
+
+    `inventario` es la otra mitad de ese paquete: qué dejaron las partes
+    anteriores, con hash y parte firmante. Ver `cadena.inventario_del_espacio`.
 
     `deposito` es la ruta donde ADR-017 materializó la última entrega producida.
     Viaja por el estado y no se recalcula en el nodo de QA: recalcularla sería
@@ -90,8 +110,7 @@ class EstadoDeveloper(TypedDict):
     unidad: Dict[str, Any]
     contexto_unidades: List[Dict[str, Any]]
     directorio: str
-    directorio_trabajo: str
-    ya_depositado: List[str]
+    inventario: List[Dict[str, Any]]
     entrega: Optional[Dict[str, Any]]
     deposito: Optional[str]
     incumplimientos: List[Dict[str, Any]]
@@ -131,6 +150,13 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
     día que el paquete tenga que crecer, crezca sin cambiarle la firma a todo
     productor existente. Que el paquete sea suficiente es el punto del ADR; que
     sea ampliable es lo que hace que se pueda cumplir la próxima vez.
+
+    **El inventario viaja sin contenido.** El agente necesita saber qué hay, de
+    quién es y con qué hash —eso es lo que le permite no duplicar ni pisar—, pero
+    el código de las partes anteriores le llega sólo por `contexto_unidades`, o
+    sea sólo el de las dependencias que el plan le declaró. Mandarle el espacio
+    entero adentro del prompt es exactamente la duplicación de contexto que
+    ADR-019 midió como causa de que QA de U2 no pudiera verificar nada.
     """
 
     def nodo(estado):
@@ -144,8 +170,11 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 estado["incumplimientos"],
                 contexto,
                 {
-                    "directorio_trabajo": estado["directorio_trabajo"],
-                    "ya_depositado": estado["ya_depositado"],
+                    "directorio_trabajo": estado["directorio"],
+                    "inventario": [
+                        {k: v for k, v in archivo.items() if k != "contenido"}
+                        for archivo in estado["inventario"]
+                    ],
                 },
             )
         except FalloDeInfraestructura as fallo:
@@ -234,7 +263,11 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
         destino = deposito.ruta_de_iteracion(
             operational_state.DIR_ESTADO / "entregas", run_id, iteracion
         )
-        registrada = deposito.depositar(entrega, destino)
+        # Con `base`: por ADR-019 el depósito arranca siendo una copia del espacio
+        # de la cadena y la entrega se escribe encima. Lo que QA y la regresión
+        # ejecutan es el espacio entero, no la entrega suelta — si no, una parte
+        # que sólo agrega pruebas no tendría contra qué correrlas.
+        registrada = deposito.depositar(entrega, destino, base=estado["directorio"])
         store.append(
             run_id,
             "entrega_producida",
@@ -265,7 +298,9 @@ def _nodo_verificar(store):
 
     def nodo(estado):
         run_id = estado["run_id"]
-        veredicto = verificador_entrega.verificar(estado["entrega"], estado["plan"])
+        veredicto = verificador_entrega.verificar(
+            estado["entrega"], estado["plan"], inventario=estado["inventario"]
+        )
         store.append(
             run_id,
             "verificacion_ejecutada",
@@ -278,6 +313,56 @@ def _nodo_verificar(store):
             },
         )
         return {"incumplimientos": veredicto["incumplimientos"]}
+
+    return nodo
+
+
+def _nodo_regresion(store):
+    """La suite de las partes firmadas — ADR-019 punto 4.
+
+    No consume modelo ni presupuesto: corre archivos que ya existen y mira el
+    código de salida. Por eso está siempre y no detrás de un flag.
+
+    `SinFrontera` escala, con el mismo argumento que en `_nodo_qa`: que la máquina
+    no tenga frontera de kernel no dice nada sobre el entregable, y dar por buena
+    una parte cuya regresión no se pudo correr sería registrar como verificado
+    algo que nadie miró.
+    """
+
+    def nodo(estado):
+        run_id = estado["run_id"]
+        pruebas = regresion.archivos_de_prueba(estado["inventario"])
+        try:
+            incumplimientos = regresion.correr(estado["deposito"], pruebas)
+        except ejecutor.SinFrontera as sin_frontera:
+            store.append(
+                run_id,
+                "fallo_infraestructura",
+                PLATAFORMA,
+                {
+                    "detalle": str(sin_frontera),
+                    "iteracion": estado["iteracion"],
+                    "etapa": "regresion",
+                },
+            )
+            return {"resultado": "escalado_por_sin_frontera"}
+
+        store.append(
+            run_id,
+            "regresion_ejecutada",
+            PLATAFORMA,
+            {
+                "iteracion": estado["iteracion"],
+                "unidad": estado["unidad"]["id"],
+                "deposito": relativa_a(estado["deposito"], operational_state.DIR_ESTADO),
+                "cumple": not incumplimientos,
+                # Qué se corrió, aunque haya pasado todo. Sin esto, "la suite
+                # anterior no se rompió" no se distingue de "no había suite".
+                "pruebas": pruebas,
+                "incumplimientos": incumplimientos,
+            },
+        )
+        return {"incumplimientos": incumplimientos}
 
     return nodo
 
@@ -475,24 +560,32 @@ def _tras_qa(estado):
     return "no_cumple"
 
 
+# La regresión se corta igual que QA, por el mismo argumento: no trae techo
+# propio, el que reintenta es el Developer y los incumplimientos vienen en la
+# misma forma.
+_tras_regresion = _tras_qa
+
+
 def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0, qa_fn=None):
     """El grafo de una unidad. Nodos y aristas a mano, como exige ADR-006.
 
-    Sin `qa_fn` el grafo es el de V0.2 exactamente: `verificar` válido va a `fin`
-    y el nodo `qa` no existe.
+    Sin `qa_fn` el nodo `qa` no existe y la regresión que cumple va derecho a
+    `fin`. El nodo `regresion` está siempre: no depende de ninguna definición ni
+    consume presupuesto, y sin partes firmadas antes devuelve la lista vacía.
     """
     grafo = StateGraph(EstadoDeveloper)
 
     grafo.add_node("verificar_techos", _nodo_verificar_techos(store))
     grafo.add_node("producir", _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion))
     grafo.add_node("verificar", _nodo_verificar(store))
+    grafo.add_node("regresion", _nodo_regresion(store))
     grafo.add_node("escalar", _nodo_escalar(store))
     grafo.add_node("fin", _nodo_fin(store))
 
     if qa_fn is None:
-        tras_verificacion_estructural = "fin"
+        despues_de_regresion = "fin"
     else:
-        tras_verificacion_estructural = "qa"
+        despues_de_regresion = "qa"
         grafo.add_node("qa", _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion))
         grafo.add_conditional_edges(
             "qa",
@@ -507,6 +600,17 @@ def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0, qa_fn=
             },
         )
 
+    grafo.add_conditional_edges(
+        "regresion",
+        _tras_regresion,
+        {
+            "cumple": despues_de_regresion,
+            "no_cumple": "verificar_techos",
+            "agotado": "escalar",
+            "fallo": "escalar",
+        },
+    )
+
     grafo.add_edge(START, "verificar_techos")
     grafo.add_conditional_edges(
         "verificar_techos", _tras_verificar_techos, {"ok": "producir", "techo": "escalar"}
@@ -518,7 +622,7 @@ def crear_grafo(producir_fn, store, ruta_vault=None, costo_iteracion=0.0, qa_fn=
         "verificar",
         _tras_verificar,
         {
-            "valido": tras_verificacion_estructural,
+            "valido": "regresion",
             "reintenta": "verificar_techos",
             "agotado": "escalar",
         },

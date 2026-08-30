@@ -145,9 +145,9 @@ lo pueda evaluar el propio Agent Run, y cualquier criterio de calidad lo obligar
 a juzgarse a sí mismo. Es el punto 3 de ADR-005 aplicado al criterio de
 terminación.
 
-**Quién lo evalúa.** Las nueve reglas de validez del Contrato de Entrega las
+**Quién lo evalúa.** Las diez reglas de validez del Contrato de Entrega las
 evalúa el verificador estructural de la plataforma —la presencia de los cuatro
-entregables es su regla 6—. La aprobación la otorga el CEO en el Gate de salida,
+entregables en el espacio de trabajo es su regla 6—. La aprobación la otorga el CEO en el Gate de salida,
 después de abrir los dos HTML. En ningún caso lo evalúa el propio Agent Run.
 
 ## 8. Presupuesto
@@ -182,7 +182,7 @@ dispara Gate por el criterio 4 del piso de ADR-004.
 
 ## 9. Comportamiento ante fallo
 
-**Qué constituye fallo.** Una Entrega que no satisface alguna de las nueve reglas
+**Qué constituye fallo.** Una Entrega que no satisface alguna de las diez reglas
 de validez del Contrato de Entrega, o una salida que no se puede leer como la
 forma estructurada que el contrato fija.
 
@@ -327,7 +327,7 @@ El Developer no depende de ningún otro y ninguno depende de él en V0.2.
 (T6), que define la unidad que recibe; el [[Contrato de Entrega del Developer]],
 que define lo que devuelve; el [[Ruleset mecánico]], que define qué tiene que
 cumplir el código; y **un verificador estructural de entregas**, que evalúe las
-nueve reglas de validez del contrato.
+diez reglas de validez del contrato.
 
 **Los cuatro existen.** El verificador estructural de entregas era el que
 faltaba cuando esta definición se escribió, y es lo que impedía instanciarla: sin

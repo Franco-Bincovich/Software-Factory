@@ -87,8 +87,12 @@ ENTREGA = {
 
 # ADR-014: dónde deposita y qué hay ya depositado.
 PAQUETE = {
-    "directorio_trabajo": "/estado/trabajo/abc123/U2",
-    "ya_depositado": ["U1/demo.html", "U1/pruebas.html", "U1/src/leer.js"],
+    "directorio_trabajo": "/estado/trabajo/abc123",
+    "inventario": [
+        {"ruta": "demo.html", "rol": "artefacto_esperado", "sha256": "a" * 64, "parte": "U1"},
+        {"ruta": "pruebas.html", "rol": "artefacto_esperado", "sha256": "b" * 64, "parte": "U1"},
+        {"ruta": "src/leer.js", "rol": "artefacto_esperado", "sha256": "c" * 64, "parte": "U1"},
+    ],
 }
 
 INCUMPLIMIENTOS = [
@@ -240,15 +244,27 @@ class PromptInicial(unittest.TestCase):
         self.assertIn("No adivines", self.sistema)
 
     def test_lleva_el_domicilio_y_el_inventario_del_paquete(self):
-        """ADR-014: el agente ve dónde deposita y qué dejaron las otras unidades."""
+        """ADR-014: el agente ve dónde deposita y qué dejaron las otras partes."""
         self.assertIn(PAQUETE["directorio_trabajo"], self.mensaje)
-        for ruta in PAQUETE["ya_depositado"]:
-            self.assertIn(ruta, self.mensaje)
+        for archivo in PAQUETE["inventario"]:
+            self.assertIn(archivo["ruta"], self.mensaje)
+            self.assertIn(archivo["parte"], self.mensaje)
 
-    def test_le_dice_que_los_nombres_fijos_no_chocan_con_otra_unidad(self):
-        """Lo que en la corrida real el agente adivinó, y adivinó mal."""
-        self.assertIn("no chocan", self.mensaje)
+    def test_el_inventario_lleva_el_hash_de_cada_archivo_firmado(self):
+        """Sin el hash, "ya lo depositaste" no le dice si copió o pisó."""
+        for archivo in PAQUETE["inventario"]:
+            self.assertIn(archivo["sha256"][:12], self.mensaje)
+
+    def test_le_dice_que_lo_firmado_no_se_reabre_y_cual_es_la_excepcion(self):
+        """ADR-019: el espacio es compartido y la pared la pone la regla, no la carpeta."""
+        self.assertIn("Lo firmado no se reabre", self.mensaje)
         self.assertIn("No los renombres", self.mensaje)
+        self.assertIn("`pruebas.html` y `demo.html`", self.mensaje)
+
+    def test_le_dice_que_escale_en_vez_de_pisar_lo_aprobado(self):
+        """El punto 6 de ADR-019: reabrir lo firmado lo decide una persona."""
+        self.assertIn("entrega vacía", self.mensaje)
+        self.assertIn("no la fuerces", self.mensaje)
 
     def test_el_paquete_va_en_el_mensaje_y_no_en_el_prefijo_cacheado(self):
         """Varía por unidad: en el system prompt invalidaría el caché siempre."""
@@ -264,13 +280,14 @@ class PromptInicialSinPaquete(unittest.TestCase):
         )
         self.assertNotIn("Dónde trabajás", cliente.llamadas[0]["messages"][0]["content"])
 
-    def test_la_primera_unidad_lo_dice_en_vez_de_listar_nada(self):
-        paquete = {"directorio_trabajo": "/estado/trabajo/abc123/U1", "ya_depositado": []}
+    def test_la_primera_parte_lo_dice_en_vez_de_listar_nada(self):
+        paquete = {"directorio_trabajo": "/estado/trabajo/abc123", "inventario": []}
         (_, _), cliente = producir(
             {"respuesta": Respuesta(json.dumps(ENTREGA))}, paquete=paquete
         )
         mensaje = cliente.llamadas[0]["messages"][0]["content"]
-        self.assertIn("sos la primera unidad", mensaje)
+        self.assertIn("sos la primera parte", mensaje)
+        self.assertNotIn("Lo firmado no se reabre", mensaje)
 
 
 # --- 4 — el prompt no se desvía del verificador ------------------------------
@@ -338,7 +355,7 @@ class PromptDeCorreccion(unittest.TestCase):
         )
         mensaje = cliente.llamadas[0]["messages"][0]["content"]
         self.assertIn(PAQUETE["directorio_trabajo"], mensaje)
-        self.assertIn("U1/pruebas.html", mensaje)
+        self.assertIn("src/leer.js", mensaje)
 
 
 # --- 6 — la llamada ----------------------------------------------------------
