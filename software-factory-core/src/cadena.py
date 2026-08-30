@@ -179,6 +179,22 @@ def directorio_registrado(store, run_pedido):
 
 
 # --- techo de la cadena -----------------------------------------------------
+#
+# Los dos techos de acá abajo se verifican **entre unidades**, antes de lanzar
+# la que sigue, y no adentro de la subcorrida del Developer. Eso deja un exceso
+# posible y conocido: la unidad ya empezada corre hasta su propio techo aunque
+# la cadena cruce el del pedido en el medio. Con los parámetros de hoy
+# —`Developer Agent.md`: 0,50 USD y 10 minutos por invocación— el exceso está
+# acotado por **una** unidad empezada: el techo del pedido más 0,50 USD y más
+# 10 minutos, no N veces eso.
+#
+# Cerrarlo se evaluó y se descartó (2026-08-30). Exigiría que el techo de la
+# cadena cruce la frontera entre este módulo y `grafo_developer`, que hoy no
+# sabe —ni tiene por qué saber— que hay una cadena arriba suyo. Acotado y
+# conocido no es lo mismo que descontrolado, y la unidad en curso ya está
+# gobernada por su propio techo. Queda escrito para que el que lea esto no lo
+# tome por un olvido: mover la frontera pide una razón nueva, no la que ya se
+# evaluó acá.
 
 
 def costo_de_la_cadena(store, run_pedido, runs_developer):
@@ -187,6 +203,26 @@ def costo_de_la_cadena(store, run_pedido, runs_developer):
     for run in runs_developer:
         total += presupuesto.consumo(store, run)["costo"]
     return total
+
+
+def tiempo_de_la_cadena(store, run_pedido, ahora=None):
+    """Los minutos que lleva viva la cadena, descontadas las esperas de Gate.
+
+    **No suma las subcorridas, y no es un olvido**: los Developer corren adentro
+    de la ventana de la corrida del pedido, así que sumarlas contaría dos veces
+    el mismo reloj. El costo se suma porque cada corrida gasta plata aparte; el
+    tiempo es uno solo y es el de la corrida que las contiene.
+
+    El descuento de las ventanas de Gate lo hace `presupuesto.consumo`, que es
+    de donde sale la medida: esperar a que una persona resuelva un Gate no puede
+    matar la cadena, igual que no puede matar una corrida sola.
+
+    El techo de tiempo es **por cadena y no por linaje**, al revés que el de
+    costo, que se hereda descontado en `techo_heredado`. Sumar el tiempo de las
+    corridas previas del linaje contaría los días que pasaron entre una y otra,
+    que es precisamente lo que descontar las ventanas de Gate quiere evitar.
+    """
+    return presupuesto.consumo(store, run_pedido, ahora=ahora)["tiempo_min"]
 
 
 # --- directorio de trabajo --------------------------------------------------
@@ -578,6 +614,7 @@ def nodo_ejecutar_unidades(
         run_pedido = estado["run_id"]
         plan = estado["plan"]
         techo_cadena = estado["techo_cadena"]
+        techo_tiempo_cadena = estado["techo_tiempo_cadena"]
 
         directorio = directorio_registrado(store, run_pedido)
         reanuda = directorio is not None
@@ -616,6 +653,24 @@ def nodo_ejecutar_unidades(
                     "directorio": directorio,
                     "entregas": _resumen(store, entregas_por_unidad, hechas),
                     "resultado": "escalado_por_techo_de_cadena",
+                }
+
+            minutos = tiempo_de_la_cadena(store, run_pedido)
+            if minutos >= techo_tiempo_cadena:
+                store.append(
+                    run_pedido,
+                    "techo_tiempo_cadena_alcanzado",
+                    PLATAFORMA,
+                    {
+                        "tiempo_min": minutos,
+                        "limite": techo_tiempo_cadena,
+                        "unidad": unidad["id"],
+                    },
+                )
+                return {
+                    "directorio": directorio,
+                    "entregas": _resumen(store, entregas_por_unidad, hechas),
+                    "resultado": "escalado_por_techo_de_tiempo_de_cadena",
                 }
 
             resultado = _correr_unidad(
@@ -833,6 +888,7 @@ __all__ = [
     "reconciliar",
     "sha256_de",
     "techo_heredado",
+    "tiempo_de_la_cadena",
     "ultima_parte_firmada",
     "unidades_entregadas",
 ]

@@ -1,6 +1,6 @@
 """Criterio de aceptación de T13.
 
-Un test por cada fila de la tabla: son nueve. Todos operan sobre una base
+Un test por cada fila de la tabla: son ocho. Todos operan sobre una base
 temporal que se crea y se destruye con cada test. La base real nunca se toca.
 """
 
@@ -174,32 +174,6 @@ class Secretos(BaseTemporal):
         # Una clave de nombre parecido pero distinta sí entra: el control es léxico.
         self.store.append(self.run, "pedido_recibido", "plataforma", {"api_key_id": "publico"})
         self.assertEqual(len(self.store.leer_run(self.run)), 1)
-
-
-class Consumo(BaseTemporal):
-    def test_devuelve_el_acumulado_tras_varios_consumo_registrado(self):
-        self.assertEqual(
-            self.store.consumo(self.run), {"costo": 0, "tiempo": 0, "iteraciones": 0}
-        )
-        # Cada evento lleva el delta de ese momento, no el acumulado.
-        for _ in range(3):
-            self.store.append(
-                self.run, "consumo_registrado", "plataforma",
-                {"costo": 0.5, "tiempo": 3, "iteraciones": 1},
-            )
-        self.assertEqual(
-            self.store.consumo(self.run), {"costo": 1.5, "tiempo": 9, "iteraciones": 3}
-        )
-        # Un delta más se suma; no reemplaza al anterior.
-        self.store.append(
-            self.run, "consumo_registrado", "plataforma", {"costo": 0.25, "tiempo": 1, "iteraciones": 1}
-        )
-        self.assertEqual(
-            self.store.consumo(self.run), {"costo": 1.75, "tiempo": 10, "iteraciones": 4}
-        )
-        # El consumo es por corrida.
-        otro = self.store.nuevo_run_id()
-        self.assertEqual(self.store.consumo(otro), {"costo": 0, "tiempo": 0, "iteraciones": 0})
 
 
 class Gates(BaseTemporal):

@@ -228,24 +228,11 @@ class OperationalState:
         ).fetchall()
         return [self._a_evento(f) for f in filas]
 
-    def consumo(self, run_id):
-        """Consumo acumulado de una corrida.
-
-        Cada evento `consumo_registrado` lleva lo consumido en ese momento, no
-        el acumulado: el acumulado es estado derivado y no se guarda como hecho.
-        Por eso se suman los deltas de todos los eventos de la corrida.
-        """
-        filas = self._conexion.execute(
-            "SELECT payload FROM evento WHERE run_id = ? AND tipo = 'consumo_registrado' "
-            "ORDER BY id",
-            (run_id,),
-        ).fetchall()
-        total = {"costo": 0, "tiempo": 0, "iteraciones": 0}
-        for fila in filas:
-            payload = json.loads(fila["payload"])
-            for clave in total:
-                total[clave] += payload.get(clave, 0)
-        return total
+    # El consumo de una corrida no se lee acá: lo mide `presupuesto.consumo`,
+    # que es el único que sabe que el tiempo sale de los timestamps y no de un
+    # campo del payload, y que las ventanas de Gate se descuentan. Hubo acá una
+    # función homónima que sumaba una clave `tiempo` que ningún payload trae:
+    # devolvía cero siempre y no la llamaba nadie salvo su propio test.
 
     # --- identidad --------------------------------------------------------
 

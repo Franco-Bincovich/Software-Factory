@@ -103,12 +103,19 @@ Agregar tipos no requiere ADR. Quitar alguno, sí.
 append(run_id, tipo, actor, payload) -> id
 leer_run(run_id)                     -> [evento]  ordenados por id
 gates_pendientes()                   -> [gate abierto sin resolver]
-consumo(run_id)                      -> {costo, tiempo, iteraciones}
 nuevo_run_id()                       -> str
 ```
 
 **No existe función de update ni de delete.** No es un olvido: es la interfaz
 completa.
+
+`consumo(run_id)` estaba acá y se quitó el 2026-08-30. Devolvía
+`{costo, tiempo, iteraciones}` sumando esas tres claves del payload de cada
+`consumo_registrado`, pero ningún productor escribe `tiempo` ni `iteraciones`
+ahí: el tiempo sale de los timestamps y las iteraciones se cuentan por evento.
+Dos de los tres campos devolvían cero siempre. La medida real la da
+`presupuesto.consumo`, que además descuenta las ventanas de Gate. No la llamaba
+nadie salvo su propio test.
 
 `nuevo_run_id` genera un identificador único y opaco. Se llama antes de consumir
 un solo token, según ADR-011 punto 4.
@@ -139,9 +146,12 @@ un nombre inocente. Se declara como parcial en vez de fingir que cubre el caso.
 | Reconstrucción | Con solo los eventos de una corrida se reconstruye qué pasó, sin consultar ninguna otra fuente |
 | Actor obligatorio | `append` con actor vacío o `"sistema"` es rechazado |
 | Secretos | `append` con payload que contiene `api_key` en cualquier nivel es rechazado |
-| Consumo | `consumo` devuelve la suma de los deltas tras varios `consumo_registrado` |
 | Gates | `gates_pendientes` devuelve solo los abiertos sin `gate_resuelto` posterior |
 | Aislamiento entre corridas | Eventos de dos `run_id` distintos no se mezclan en `leer_run` |
+
+La fila «Consumo» se retiró junto con la función, el 2026-08-30. Lo que medía
+—que los deltas se suman— lo comprueba `tests/test_presupuesto.py`, contra la
+función que sí se usa.
 
 ---
 

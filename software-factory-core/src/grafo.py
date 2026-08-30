@@ -144,6 +144,7 @@ class EstadoGrafo(TypedDict):
     directorio: Optional[str]
     entregas: List[Dict[str, Any]]
     techo_cadena: float
+    techo_tiempo_cadena: float
 
 
 class CorridaBloqueada(RuntimeError):
@@ -834,6 +835,7 @@ def ejecutar(
         directorio=None,
         entregas=[],
         techo_cadena=pedido["techo_costo_usd"],
+        techo_tiempo_cadena=pedido["techo_tiempo_min"],
     )
 
     grafo = crear_grafo(
@@ -925,6 +927,9 @@ def ejecutar_heredado(
         directorio=None,
         entregas=[],
         techo_cadena=techo_cadena,
+        # El de costo llega descontado por `techo_heredado`; el de tiempo no se
+        # hereda. Ver `cadena.tiempo_de_la_cadena`.
+        techo_tiempo_cadena=pedido["techo_tiempo_min"],
     )
 
     compilado = crear_grafo(
