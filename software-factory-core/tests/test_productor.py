@@ -327,10 +327,10 @@ class PromptInicial(unittest.TestCase):
             self.assertIn(contenido, sistema)
         self.assertIn("plan-de-trabajo", json.dumps(productor.cargar_esquema()))
         self.assertIn("alcance_excluido", sistema)
-        # Las siete reglas más la compuerta del esquema: el prompt nombra cada
+        # Las ocho reglas más la compuerta del esquema: el prompt nombra cada
         # identificador que el verificador puede devolver. La 0 aparece en
         # minúscula porque el prompt la presenta como compuerta, no como regla.
-        for regla in range(8):
+        for regla in range(9):
             self.assertIn("regla %d" % regla, sistema.lower())
 
         usuario = llamada["messages"][0]["content"]

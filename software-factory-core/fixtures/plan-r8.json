@@ -1,5 +1,5 @@
 {
-  "plan_id": "PLAN-0001-R2",
+  "plan_id": "PLAN-0001",
   "run_id": "RUN-0001",
   "pedido_id": "PED-0001",
   "sucede_a": null,
@@ -7,10 +7,7 @@
     "techo_costo": 2,
     "techo_tiempo_min": 20,
     "techo_iteraciones": 5,
-    "alcance_excluido": [
-      "interfaz gráfica",
-      "conexión al sistema viejo"
-    ]
+    "alcance_excluido": ["interfaz gráfica", "conexión al sistema viejo"]
   },
   "unidades": [
     {
@@ -31,7 +28,7 @@
       "dependencias": [],
       "rastreo": "lee un CSV de altas de empleados",
       "artefacto_esperado": "Módulo lector que devuelve la lista de registros y la lista de filas no parseables.",
-      "ruta_artefacto": null
+      "ruta_artefacto": "src/lector.py"
     },
     {
       "id": "U2",
@@ -39,7 +36,8 @@
       "criterios": [
         {
           "condicion_observable": "Dado un registro sin legajo, qué reglas incumplidas devuelve el validador.",
-          "resultado_esperado": "Exactamente una regla incumplida, identificada como legajo ausente."
+          "resultado_esperado": "Exactamente una regla incumplida, identificada como legajo ausente.",
+          "procedimiento": "Correr el validador con pytest sobre un registro con el campo legajo vacío y leer la lista de reglas incumplidas."
         },
         {
           "condicion_observable": "Dado un registro con fecha de ingreso posterior a hoy, qué reglas incumplidas devuelve el validador.",
@@ -47,9 +45,7 @@
           "procedimiento": "Correr el validador sobre un registro con fecha de ingreso de mañana y leer la lista de reglas incumplidas."
         }
       ],
-      "dependencias": [
-        "U1"
-      ],
+      "dependencias": ["U1"],
       "rastreo": "altas de empleados",
       "artefacto_esperado": "Módulo validador que devuelve, por registro, la lista de reglas incumplidas.",
       "ruta_artefacto": null
@@ -69,9 +65,7 @@
           "procedimiento": "Correr el paso sobre una fila sin legajo y con fecha futura, y contar los motivos de esa entrada."
         }
       ],
-      "dependencias": [
-        "U2"
-      ],
+      "dependencias": ["U2"],
       "rastreo": "qué filas no se pueden importar",
       "artefacto_esperado": "Estructura con número de fila, identificador del registro y motivos de rechazo.",
       "ruta_artefacto": null
@@ -91,9 +85,7 @@
           "procedimiento": "Correr la herramienta completa sobre fixtures/altas-50-limpio.csv y leer la salida."
         }
       ],
-      "dependencias": [
-        "U3"
-      ],
+      "dependencias": ["U3"],
       "rastreo": "reporta qué filas no se pueden importar",
       "artefacto_esperado": "Reporte de texto con una línea por fila rechazada y una línea de total.",
       "ruta_artefacto": null
@@ -101,7 +93,7 @@
   ],
   "supuestos": [
     "El CSV usa coma como separador y codificación UTF-8. El pedido no lo especifica.",
-    "La primera fila del archivo es el encabezado.",
+    "Se asume que el lenguaje de implementación es Python y el framework de pruebas es pytest, dado que el pedido no especifica lenguaje ni herramientas.",
     "El archivo de entrada entra en memoria; no se requiere procesamiento por streaming."
   ],
   "fuera_de_alcance": [

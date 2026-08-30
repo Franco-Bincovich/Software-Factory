@@ -110,6 +110,7 @@ def _unidad(uid, dependencias):
         "dependencias": list(dependencias),
         "rastreo": RASTREO,
         "artefacto_esperado": "Entregable ejecutable con su prueba asociada.",
+        "ruta_artefacto": None,
     }
 
 

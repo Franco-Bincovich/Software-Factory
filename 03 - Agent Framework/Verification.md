@@ -175,7 +175,7 @@ explícitamente.
 ## Impacto en otros documentos
 
 [[ADR-005]] — queda ejecutada su cláusula "Crea:". **Contrato del Plan de
-Trabajo** — sus siete reglas de validez son la aplicación de este documento.
+Trabajo** — sus ocho reglas de validez son la aplicación de este documento.
 **Quality** (pendiente) — debe partir de la distinción entre los dos niveles y no
 tratar cobertura como corrección. [[Runbook V0.1]] — la sección del Gate de
 salida deriva de acá.

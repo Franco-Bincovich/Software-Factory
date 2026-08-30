@@ -13,7 +13,12 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ / "src"))
 
-from verificador import verificar  # noqa: E402
+from verificador import (  # noqa: E402
+    EXTENSIONES_AJENAS,
+    LENGUAJE_DE_LA_FABRICA,
+    TERMINOS_AJENOS,
+    verificar,
+)
 
 FIXTURES = RAIZ / "fixtures"
 PEDIDO = (FIXTURES / "pedido.txt").read_text(encoding="utf-8")
@@ -77,6 +82,65 @@ class DefectoSembrado(unittest.TestCase):
         self.assertIn("U1, U2", fallo["detalle"])
         self.assertNotIn("U3", fallo["detalle"])
         self.assertNotIn("U4", fallo["detalle"])
+
+    def test_r8_lenguaje_ajeno(self):
+        r = self._comprobar("plan-r8.json", 8)
+        detalles = [i["detalle"] for i in r["incumplimientos"]]
+        # Los tres lugares sembrados: el supuesto, la ruta y el procedimiento.
+        self.assertTrue(any("supuesto 2" in d and "python" in d for d in detalles))
+        self.assertTrue(any("ruta_artefacto" in d and "'.py'" in d for d in detalles))
+        self.assertTrue(any("procedimiento" in d and "pytest" in d for d in detalles))
+        # Y localiza: la ruta es de U1, el procedimiento es del criterio 0 de U2.
+        (ruta,) = [i for i in r["incumplimientos"] if "ruta_artefacto" in i["detalle"]]
+        self.assertEqual((ruta["unidad"], ruta["criterio"]), ("U1", None))
+        (proc,) = [i for i in r["incumplimientos"] if "pytest" in i["detalle"] and i["unidad"]]
+        self.assertEqual((proc["unidad"], proc["criterio"]), ("U2", 0))
+
+
+class Regla8(unittest.TestCase):
+    """El vocabulario es cerrado y declarado, y dos campos quedan afuera."""
+
+    def _plan(self):
+        return json.loads((FIXTURES / "plan-ok.json").read_text(encoding="utf-8"))
+
+    def _reglas(self, plan):
+        return reglas_disparadas(verificar(plan, PEDIDO))
+
+    def test_nombrar_un_lenguaje_para_excluirlo_no_es_comprometerse(self):
+        """`fuera_de_alcance` y `alcance_excluido` no se miran, y es a propósito."""
+        plan = self._plan()
+        plan["fuera_de_alcance"].append("Implementar nada de esto en Python.")
+        plan["restricciones"]["alcance_excluido"].append("django")
+        self.assertNotIn(8, self._reglas(plan))
+
+    def test_el_lenguaje_de_la_fabrica_no_se_marca_a_si_mismo(self):
+        """`java` está prohibido y vive adentro de `javascript`, que no lo está."""
+        plan = self._plan()
+        plan["unidades"][0]["enunciado"] = "Escribir la lógica en JavaScript, sin frameworks."
+        plan["unidades"][0]["ruta_artefacto"] = "src/lector.js"
+        self.assertNotIn(8, self._reglas(plan))
+
+    def test_la_extension_de_un_csv_no_es_la_de_csharp(self):
+        """`.csv` no puede leerse como `.cs`: la frontera de palabra lo impide."""
+        plan = self._plan()
+        plan["unidades"][0]["artefacto_esperado"] = "Módulo que lee altas.csv y devuelve registros."
+        self.assertNotIn(8, self._reglas(plan))
+
+    def test_el_detalle_nombra_el_lenguaje_de_la_fabrica(self):
+        """Un rechazo que no dice qué sí se puede producir obliga a adivinar."""
+        plan = self._plan()
+        plan["supuestos"].append("Se usa Ruby con rspec.")
+        fallos = [i for i in verificar(plan, PEDIDO)["incumplimientos"] if i["regla"] == 8]
+        self.assertTrue(fallos)
+        for fallo in fallos:
+            self.assertIn(LENGUAJE_DE_LA_FABRICA, fallo["detalle"])
+
+    def test_el_vocabulario_no_incluye_palabras_del_castellano(self):
+        """Un falso positivo cuesta un plan rechazado y una iteración pagada."""
+        for palabra in ("cargo", "go", "gem", "py", "ir", "as"):
+            self.assertNotIn(palabra, TERMINOS_AJENOS)
+        for ext in EXTENSIONES_AJENAS:
+            self.assertTrue(ext.startswith("."), ext)
 
 
 class FormaDeLaSalida(unittest.TestCase):

@@ -61,7 +61,7 @@ C0**. Es la misma mecánica por la que T7 delega la forma en su regla 0.
 
 ## Los identificadores de regla
 
-En T7 la regla es un entero, porque las siete salen de un solo documento. Acá
+En T7 la regla es un entero, porque las ocho salen de un solo documento. Acá
 salen de tres, y el prefijo dice de cuál. Un incumplimiento que no se puede
 rastrear al documento que lo exige no se puede discutir.
 
@@ -85,7 +85,7 @@ hay uno hace que el reintento corrija dos veces lo mismo.
 | `C1` | La unidad declarada existe en el plan | Total |
 | `C2` | Rutas relativas, sin `..`, sin vacías | Total |
 | `C3` | Contenido completo, sin marcadores de fragmento | Parcial — coincidencia léxica |
-| `C4` | El artefacto que la unidad declaró esperar está en la entrega | Parcial — extrae rutas de un campo en prosa |
+| `C4` | El artefacto que la unidad declaró esperar está en la entrega, y con la ruta que el plan fijó | Total — la ruta se lee de `ruta_artefacto`, no de la prosa |
 | `C5` | Lo que no es uno de los cuatro entregables está declarado auxiliar y justificado | Total |
 | `C6` | Los cuatro entregables presentes en el espacio y ninguno vacío | Total |
 | `C7` | Los dos HTML cargan **toda** la lógica del espacio y ninguno la reimplementa | Parcial — ve declaraciones, no equivalencia |
@@ -142,6 +142,28 @@ que paga esa excepción: si a `pruebas.html` y `demo.html` se los exceptúa de C
 **Lo congelado es la lógica y sus tests, no cada byte del espacio.** Los
 agregadores crecen por construcción; congelarlos sería congelar el resumen para
 proteger el contenido.
+
+### `C4` — la ruta sale del campo, no de la prosa — ADR-020
+
+Hasta ADR-020 esta regla sacaba rutas del texto de `artefacto_esperado` con una
+expresión regular, y erraba en las dos direcciones a la vez. Exigía
+`src/validate_email.py` porque el plan lo había escrito precedido de "ej.",
+convirtiendo una ilustración en obligación. Y descartaba `validador.py` —que sí
+era la ruta que el plan quería— porque no tenía barra y no era `.js` ni `.html`,
+las dos condiciones con las que el filtro se protegía del ruido. Protección por
+forma, no por principio: la información que distingue un ejemplo de una decisión
+no está en el texto, así que ninguna expresión regular mejor la iba a sacar.
+
+Ahora la ruta se lee de `ruta_artefacto`, que el plan declara aparte y el
+esquema exige. `null` es una decisión —el plan no fija la ruta— y en ese caso
+queda en pie sólo la primera mitad de la regla: que algo venga declarado como
+artefacto esperado, que es la que no depende de saber cuál.
+
+**La ruta se compara entera, sin caer al nombre de archivo.** Antes `src/a.js`
+satisfacía a `lib/a.js`, y eso tenía sentido cuando cada unidad trabajaba en su
+propio subdirectorio y el prefijo era ruido. Con el espacio único de ADR-019 el
+prefijo es parte de la decisión, y aceptar otro sería volver a convertir la ruta
+declarada en una sugerencia.
 
 ### Las dos reglas más parciales, y qué no ven
 

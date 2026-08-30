@@ -3,10 +3,10 @@ titulo: Contrato del Plan de Trabajo
 tipo: contrato
 estado: aceptado
 aprobado: 2026-08-06
-version: 1.1
+version: 1.2
 owner: CEO
-actualizado: 2026-08-26
-adr: [ADR-003, ADR-004, ADR-005, ADR-010, ADR-011]
+actualizado: 2026-08-30
+adr: [ADR-003, ADR-004, ADR-005, ADR-010, ADR-011, ADR-020]
 aliases: [Contrato del Plan de Trabajo, Plan de Trabajo]
 ---
 
@@ -94,7 +94,8 @@ regla estructural de ADR-005.
 
 ### Unidades de trabajo
 
-Cada unidad lleva seis campos obligatorios. Ninguno admite vacío.
+Cada unidad lleva siete campos obligatorios. Seis no admiten vacío; el séptimo
+admite un valor nulo que significa algo, y está explicado abajo.
 
 1. **Identificador.** Único dentro del plan. Estable: no se renumera si se
    agrega o quita una unidad.
@@ -108,7 +109,33 @@ Cada unidad lleva seis campos obligatorios. Ninguno admite vacío.
    dependencia, es un supuesto.
 5. **Rastreo.** A qué parte del pedido responde esta unidad. Es lo que permite
    comprobar la cuarta regla estructural de ADR-005 sin interpretar intención.
-6. **Artefacto esperado.** Qué produce la unidad y dónde queda depositado.
+6. **Artefacto esperado.** Qué produce la unidad. Prosa.
+7. **Ruta del artefacto.** Dónde queda depositado, exactamente. Es un campo
+   propio, y admite nulo.
+
+#### La ruta es un campo, y por qué — ADR-020
+
+Hasta la versión 1.1 la ruta vivía adentro de la prosa del artefacto esperado, y
+quien la consumía tenía que extraerla del texto. Eso no se puede hacer bien:
+**un ejemplo y una decisión se escriben igual.** Un plan escribió "*(ej.
+`src/validate_email.py`)*" y el verificador de entregas leyó esa ilustración
+como obligación; otro escribió `validador.py`, que sí era la ruta que quería, y
+el verificador la descartó porque no tenía barra. Erraba en las dos direcciones
+por la misma causa: la información que distingue una cosa de la otra no estaba
+en el texto.
+
+**Ahora la ruta es una decisión declarada o es nula, y las dos son decisiones.**
+Un valor dice "el artefacto va exactamente acá" y obliga. Nulo dice "el plan no
+la fija; la elige quien implementa", que es una posición legítima y frecuente.
+Lo que ya no existe es la tercera posibilidad, que era la que hacía daño: la
+ruta escrita al pasar, con la intención de ilustrar y el efecto de obligar.
+
+Por eso el campo es obligatorio aunque admita nulo. Si se pudiera omitir, un
+olvido y una decisión volverían a leerse igual, que es exactamente el defecto
+que este campo corrige.
+
+**En el artefacto esperado no van rutas de ejemplo.** No es una recomendación de
+estilo: es lo que sostiene la distinción.
 
 ### Acceptance Criterion — las tres partes
 
@@ -136,6 +163,12 @@ Un supuesto que, de ser falso, invalidaría el plan entero no se declara: dispar
 el criterio 6 del piso de ADR-004 —ambigüedad de requerimiento— y el plan no se
 entrega. Se escala.
 
+**El lenguaje de implementación no es un supuesto.** Mientras V0.2 esté cerrada
+a JavaScript por el [[Contrato de Entrega del Developer]], el lenguaje es un
+hecho de la Fábrica y el plan no lo elige. Que el pedido no lo mencione no lo
+convierte en una pregunta abierta: ya está contestada, y contestada afuera de
+este plan. Lo comprueba la regla 8.
+
 ### Fuera de alcance del plan
 
 Lo que el plan deliberadamente no hace, incluso si el pedido podría sugerirlo.
@@ -156,11 +189,33 @@ cerrado, y por lo tanto tampoco queda inmutable.
 4. Toda unidad declara su rastreo al pedido.
 5. Ninguna unidad cae dentro del alcance excluido declarado.
 
-Dos reglas adicionales propias de este contrato:
+Tres reglas adicionales propias de este contrato:
 
 6. El plan no supera diez unidades de trabajo. Superarlo no es un error del
    agente: es señal de que el pedido era demasiado grande, y se escala.
 7. No hay ciclos en el grafo de dependencias.
+8. El plan no compromete un lenguaje que la Fábrica no sabe producir.
+
+**La octava es de ADR-020 y merece decirse entera.** Un plan que pide Python es
+un plan que el Developer no puede cumplir, y no por falta de capacidad: el
+[[Contrato de Entrega del Developer]] le exige entregar lógica que un navegador
+cargue. Antes de esta regla esa contradicción no la comprobaba nadie y salía de
+dos maneras. La ruidosa: el plan fija una ruta ajena, el verificador de entregas
+la exige, el mismo verificador exige lógica ejecutable, y el Developer oscila
+entre las dos hasta agotar el techo. La silenciosa: el plan dice un lenguaje, el
+Developer entrega otro porque es el único que sabe, nadie los compara, y el Gate
+de salida firma una entrega que contradice al plan que la originó. **La
+silenciosa ya había ocurrido y nadie la vio.**
+
+Se comprueban los campos donde nombrar un lenguaje es comprometerse a él:
+supuestos, enunciado, artefacto esperado, ruta del artefacto y las tres partes
+de cada criterio. No se comprueban el fuera de alcance ni el alcance excluido:
+ahí nombrar un lenguaje es excluirlo, y el segundo además se copia literal del
+pedido.
+
+Se comprueba contra una lista cerrada de lenguajes ajenos, declarada y no
+inferida. Una regla que intentara *adivinar* el lenguaje de un plan se
+equivocaría en silencio, que es de lo que veníamos.
 
 ---
 
@@ -206,6 +261,9 @@ contrato fija que debe existir una forma estructurada, no cuál.
 6. Esfuerzo, asignación y prioridad quedan fuera hasta que tengan valor
    verdadero.
 7. La forma estructurada manda sobre la legible.
+8. La ruta del artefacto es un campo propio y obligatorio, con nulo admitido.
+   Una ruta declarada es una decisión; en la prosa no van rutas de ejemplo.
+9. El lenguaje de implementación no lo decide el plan.
 
 ## Decisiones abiertas
 

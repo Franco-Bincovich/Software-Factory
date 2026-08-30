@@ -44,7 +44,8 @@ derivada y no autoritativa.
       ],
       "dependencias":       [string],
       "rastreo":            string,
-      "artefacto_esperado": string
+      "artefacto_esperado": string,
+      "ruta_artefacto":     string | null
     }
   ],
   "supuestos":        [string],
@@ -56,9 +57,15 @@ derivada y no autoritativa.
 del pedido, no una paráfrasis — de eso depende que la regla 4 sea comprobable
 por máquina.
 
+`ruta_artefacto` es obligatorio y admite `null`. `artefacto_esperado` dice qué
+produce la unidad; `ruta_artefacto` dice dónde, exactamente, y es lo único que
+C4 comprueba. `null` significa "el plan no fija la ruta", que es una decisión;
+por eso el campo no se puede omitir, porque un olvido y una decisión se leerían
+igual. Ver ADR-020.
+
 ---
 
-## Las siete reglas
+## Las ocho reglas
 
 | # | Comprueba | Cómo | Mecánica |
 |---|---|---|---|
@@ -69,15 +76,31 @@ por máquina.
 | 5 | Sin alcance excluido | Ningún término de `alcance_excluido` aparece en `enunciado` ni en `artefacto_esperado` | Parcial — coincidencia léxica |
 | 6 | Máximo 10 unidades | `len(unidades) <= 10` | Total |
 | 7 | Sin ciclos | Orden topológico del grafo de dependencias | Total |
+| 8 | Sin lenguaje ajeno | Ningún término de `TERMINOS_AJENOS` ni extensión de `EXTENSIONES_AJENAS` aparece en `supuestos`, `enunciado`, `artefacto_esperado`, `ruta_artefacto` ni en las tres partes de un criterio | Parcial — lista cerrada |
 
-**Las reglas 2 y 5 son parciales y hay que decirlo.** La 2 verifica que las tres
-partes estén, no que el criterio sea bueno: un criterio con tres campos llenos
-de texto vago pasa. La 5 detecta coincidencia de palabras, no de significado: un
-plan que viola el alcance excluido usando otras palabras pasa.
+**Las reglas 2, 5 y 8 son parciales y hay que decirlo.** La 2 verifica que las
+tres partes estén, no que el criterio sea bueno: un criterio con tres campos
+llenos de texto vago pasa. La 5 detecta coincidencia de palabras, no de
+significado: un plan que viola el alcance excluido usando otras palabras pasa.
 
-Ambas son las que la verificación sustantiva de V0.3 tiene que cubrir. Hasta
-entonces las cubre el Gate humano, y esa es la razón concreta por la que el Gate
-de salida no es una formalidad.
+La 8 es parcial por una razón distinta y elegida: **su lista es cerrada y
+declarada, no inferida.** Un plan que compromete un lenguaje ajeno sin nombrarlo
+—describiendo un `setup.py` sin decir "Python"— pasa. La alternativa sería
+adivinar el lenguaje del plan, y una regla que adivina se equivoca en silencio,
+que es justamente el defecto que ADR-020 corrige. Se prefiere el falso negativo:
+un falso positivo acá cuesta un plan rechazado y una iteración pagada.
+
+Las dos primeras son las que la verificación sustantiva de V0.3 tiene que
+cubrir. Hasta entonces las cubre el Gate humano, y esa es la razón concreta por
+la que el Gate de salida no es una formalidad.
+
+### Los dos campos que la regla 8 no mira
+
+`fuera_de_alcance` y `restricciones.alcance_excluido` quedan afuera a propósito.
+En los dos, nombrar un lenguaje es **excluirlo**: "no se implementa en Python"
+es una aclaración legítima, y prohibirla obligaría a escribir peor. El segundo
+además se copia literal del pedido, así que rechazar el plan por su contenido
+sería castigar al agente por obedecer.
 
 ---
 
@@ -119,7 +142,7 @@ corregir en vez de regenerar.
 
 ## Criterio de aceptación de T7
 
-Seis planes de prueba. El verificador detecta exactamente el defecto sembrado en
+Siete planes de prueba. El verificador detecta exactamente el defecto sembrado en
 cada uno y no marca nada en el limpio.
 
 | Fixture | Defecto sembrado | Debe disparar |
@@ -130,6 +153,7 @@ cada uno y no marca nada en el limpio.
 | `plan-r3.json` | Dependencia a `U9`, que no existe | Regla 3 |
 | `plan-r5.json` | Una unidad que produce interfaz gráfica, con "interfaz gráfica" en `alcance_excluido` | Regla 5 |
 | `plan-r7.json` | U1 depende de U2 y U2 de U1 | Regla 7 |
+| `plan-r8.json` | Un supuesto que elige Python y pytest, una `ruta_artefacto` con extensión `.py` y un `procedimiento` que nombra pytest | Regla 8 |
 
 Además: sobre `plan-ok.json` el verificador no debe reportar ningún
 incumplimiento. Un falso positivo sobre el plan limpio invalida T7 igual que un

@@ -356,6 +356,24 @@ no inventes variantes: son los agregadores, y se reescriben.
 """.format(directorio=directorio, inventario=_inventario(paquete.get("inventario")))
 
 
+def _ruta_exigida(unidad):
+    """La ruta que el plan fijó, si fijó alguna.
+
+    Va aparte del `artefacto_esperado` porque es lo único que C4 comprueba, y
+    tiene que llegar así de nítida: hasta ADR-020 la ruta viajaba embebida en la
+    prosa y el Developer no podía distinguir un ejemplo de una obligación —C4
+    tampoco—. Sin ruta fijada no se dice nada: inventar una línea que diga "el
+    plan no la fijó" invita a preguntarse cuál debería ser.
+    """
+    ruta = unidad.get("ruta_artefacto")
+    if not ruta:
+        return ""
+    return (
+        "\n**Ruta exigida:** `%s`. El plan la fijó y la entrega tiene que traer "
+        "ese archivo con esa ruta exacta.\n" % ruta
+    )
+
+
 def _mensaje_inicial(unidad, contexto_unidades, paquete=None):
     """La unidad que le toca y sus dependencias. Nunca el plan completo."""
     return """\
@@ -367,7 +385,7 @@ no ves el plan completo y no decidís qué se hace después.
 **Enunciado:** {enunciado}
 
 **Artefacto esperado:** {artefacto}
-
+{ruta}
 # Acceptance Criteria
 
 Son lo que tu entrega tiene que cumplir, y los casos de `pruebas.html` salen de
@@ -384,6 +402,7 @@ acá.
         id=unidad["id"],
         enunciado=unidad["enunciado"],
         artefacto=unidad["artefacto_esperado"],
+        ruta=_ruta_exigida(unidad),
         criterios=_criterios_de(unidad),
         dependencias=_contexto_de_dependencias(contexto_unidades),
         donde=_donde_trabajas(paquete),

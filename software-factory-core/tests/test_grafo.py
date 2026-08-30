@@ -156,6 +156,7 @@ def _plan(sucede_a=None, con_criterios=True):
                 "dependencias": [],
                 "rastreo": RASTREO,
                 "artefacto_esperado": "Módulo lector con su prueba asociada.",
+                "ruta_artefacto": None,
             }
         ],
         "supuestos": ["El archivo entra en memoria."],

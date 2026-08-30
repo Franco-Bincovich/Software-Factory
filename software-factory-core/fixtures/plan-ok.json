@@ -27,7 +27,8 @@
       ],
       "dependencias": [],
       "rastreo": "lee un CSV de altas de empleados",
-      "artefacto_esperado": "Módulo lector que devuelve la lista de registros y la lista de filas no parseables."
+      "artefacto_esperado": "Módulo lector que devuelve la lista de registros y la lista de filas no parseables.",
+      "ruta_artefacto": null
     },
     {
       "id": "U2",
@@ -46,7 +47,8 @@
       ],
       "dependencias": ["U1"],
       "rastreo": "altas de empleados",
-      "artefacto_esperado": "Módulo validador que devuelve, por registro, la lista de reglas incumplidas."
+      "artefacto_esperado": "Módulo validador que devuelve, por registro, la lista de reglas incumplidas.",
+      "ruta_artefacto": null
     },
     {
       "id": "U3",
@@ -65,7 +67,8 @@
       ],
       "dependencias": ["U2"],
       "rastreo": "qué filas no se pueden importar",
-      "artefacto_esperado": "Estructura con número de fila, identificador del registro y motivos de rechazo."
+      "artefacto_esperado": "Estructura con número de fila, identificador del registro y motivos de rechazo.",
+      "ruta_artefacto": null
     },
     {
       "id": "U4",
@@ -84,7 +87,8 @@
       ],
       "dependencias": ["U3"],
       "rastreo": "reporta qué filas no se pueden importar",
-      "artefacto_esperado": "Reporte de texto con una línea por fila rechazada y una línea de total."
+      "artefacto_esperado": "Reporte de texto con una línea por fila rechazada y una línea de total.",
+      "ruta_artefacto": null
     }
   ],
   "supuestos": [

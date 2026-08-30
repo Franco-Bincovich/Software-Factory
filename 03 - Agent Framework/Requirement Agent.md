@@ -103,10 +103,10 @@ Asignar unidades de trabajo a ningún agente. Estimar esfuerzo o duración.
 
 ## 7. Criterio de terminación
 
-Existe un Plan de Trabajo que satisface las siete reglas de validez del Contrato
+Existe un Plan de Trabajo que satisface las ocho reglas de validez del Contrato
 del Plan de Trabajo, y ese veredicto quedó registrado en el Operational State.
 
-**Quién lo evalúa.** Las siete reglas las evalúa el verificador estructural de la
+**Quién lo evalúa.** Las ocho reglas las evalúa el verificador estructural de la
 plataforma. En ningún caso lo evalúa el propio Agent Run, conforme al campo 7 de
 ADR-003.
 
@@ -131,7 +131,7 @@ dispara Gate por el criterio 4 del piso de ADR-004.
 
 ## 9. Comportamiento ante fallo
 
-**Qué constituye fallo.** Un plan producido que no satisface alguna de las siete
+**Qué constituye fallo.** Un plan producido que no satisface alguna de las ocho
 reglas de validez, o una salida que no se puede validar contra la forma canónica.
 
 **Reintentos.** Hasta agotar el techo de iteraciones.

@@ -29,7 +29,8 @@
       ],
       "dependencias": [],
       "rastreo": "validar el legajo",
-      "artefacto_esperado": "src/validar-legajo.js con sus pruebas, pruebas.html y demo.html"
+      "artefacto_esperado": "src/validar-legajo.js con sus pruebas, pruebas.html y demo.html",
+      "ruta_artefacto": "src/validar-legajo.js"
     }
   ],
   "supuestos": [],
