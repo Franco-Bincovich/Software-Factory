@@ -638,7 +638,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Cuatrocientos ochenta y ocho tests, uno por cada fila de los criterios de
+Cuatrocientos noventa tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -649,12 +649,12 @@ después y las piezas de V0.2:
 | `test_agent_loader.py` | 10 | el criterio de aceptación de T10 |
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
 | `test_presupuesto.py` | 16 | el criterio de aceptación de T12, los dos formatos del consumo y el techo medido con el caché cobrado |
-| `test_operational_state.py` | 9 | el criterio de aceptación de T13 |
+| `test_operational_state.py` | 8 | el criterio de aceptación de T13 |
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
 | `test_productor.py` | 29 | el criterio de aceptación de T15, el desglose del consumo y la tabla de precios verificada con sus cuatro contadores |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 50 | un defecto sembrado por regla sobre la entrega limpia, las tres reglas que miran el inventario del espacio y que C4 lea la ruta del campo y no de la prosa |
-| `test_cadena.py` | 68 | la cadena completa, el reintento, la detención, el techo de la cadena, el depósito de artefactos, el enganche de QA y qué hace cada nodo con una respuesta ilegible |
+| `test_cadena.py` | 71 | la cadena completa, el reintento, la detención, los dos techos de la cadena, el depósito de artefactos, el enganche de QA y qué hace cada nodo con una respuesta ilegible |
 | `test_productor_entrega.py` | 33 | el productor de entregas, con cliente falso |
 | `test_correr_cadena.py` | 33 | la costura entre la CLI y la cadena, el régimen declarado y el encendido de QA |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |

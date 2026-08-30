@@ -13,6 +13,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -243,6 +244,26 @@ class BaseCadena(unittest.TestCase):
         acá el punto es otro y la ruta es solo un medio.
         """
         return Path(cadena.directorio_registrado(self.store, run_id))
+
+    def evento_hace(self, run_id, minutos, tipo, payload=None, actor="plataforma"):
+        """Inserta un evento con `ts` retrasado, para armar una línea de tiempo.
+
+        Va por SQL porque `append` sella el `ts` con el reloj real y estos tests
+        necesitan que la cadena lleve minutos viva sin esperarlos. Insertar está
+        permitido: los triggers solo impiden modificar y borrar.
+        """
+        ts = datetime.now(timezone.utc) - timedelta(minutes=minutos)
+        with self.store._conexion:
+            self.store._conexion.execute(
+                "INSERT INTO evento (run_id, ts, tipo, actor, payload) VALUES (?,?,?,?,?)",
+                (
+                    run_id,
+                    ts.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+                    tipo,
+                    actor,
+                    json.dumps(payload or {}, ensure_ascii=False),
+                ),
+            )
 
     def nodo(self, developer=producir_entrega_stub, costo=0.0):
         return cadena.nodo_ejecutar_unidades(
@@ -506,6 +527,67 @@ class TechoDeLaCadena(BaseCadena):
 
         self.assertEqual(estado["resultado"], "escalado_por_techo_de_cadena")
 
+    def test_el_tiempo_corta_igual_que_el_costo_y_nombra_la_unidad(self):
+        """El techo de tiempo del pedido gobierna la cadena, no solo el Requirement."""
+        run = self.store.nuevo_run_id()
+        self.evento_hace(run, 30, "run_iniciada")
+
+        resultado = self.nodo()({
+            "run_id": run, "plan": plan_de(TRES_UNIDADES), "pedido": dict(PEDIDO),
+            "techo_cadena": PEDIDO["techo_costo_usd"],
+            "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
+        })
+
+        self.assertEqual(resultado["resultado"], "escalado_por_techo_de_tiempo_de_cadena")
+        # Corta antes de lanzar: no se paga una unidad para descubrir que no había tiempo.
+        self.assertEqual(self.de_tipo(run, "unidad_lanzada"), [])
+
+        (techo,) = self.de_tipo(run, "techo_tiempo_cadena_alcanzado")
+        self.assertEqual(techo["payload"]["unidad"], "U1")
+        self.assertEqual(techo["payload"]["limite"], PEDIDO["techo_tiempo_min"])
+        self.assertGreaterEqual(techo["payload"]["tiempo_min"], PEDIDO["techo_tiempo_min"])
+
+    def test_esperar_en_un_gate_no_gasta_el_techo_de_tiempo(self):
+        """Treinta minutos de reloj con veinte de espera son diez: la cadena sigue."""
+        run = self.store.nuevo_run_id()
+        self.evento_hace(run, 30, "run_iniciada")
+        self.evento_hace(run, 25, "gate_abierto", {"gate": "entrada"})
+        self.evento_hace(
+            run, 5, "gate_resuelto", {"gate": "entrada", "decision": "aprobado"}, actor="CEO"
+        )
+
+        self.assertAlmostEqual(cadena.tiempo_de_la_cadena(self.store, run), 10.0, places=1)
+
+        resultado = self.nodo()({
+            "run_id": run, "plan": plan_de(TRES_UNIDADES), "pedido": dict(PEDIDO),
+            "techo_cadena": PEDIDO["techo_costo_usd"],
+            "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
+        })
+
+        self.assertIsNone(resultado.get("resultado"))
+        self.assertEqual(self.de_tipo(run, "techo_tiempo_cadena_alcanzado"), [])
+        self.assertEqual(
+            sorted(e["payload"]["unidad"] for e in self.de_tipo(run, "unidad_lanzada")),
+            ["U1", "U2", "U3"],
+        )
+
+    def test_la_heredera_arranca_con_lo_que_queda_y_no_con_el_total(self):
+        """Lo gastado por las subcorridas descuenta del techo que hereda la que sigue."""
+        run, _, _ = self.correr_cadena(TRES_UNIDADES, costo=0.1)
+
+        hijas = cadena.corridas_de_developer(self.store, run)
+        self.assertEqual(len(hijas), 3)
+        gastado = cadena.costo_de_la_cadena(self.store, run, hijas)
+        # El Requirement solo gastó menos que la cadena entera: si el descuento
+        # ignorara a las hijas, esta comparación no distinguiría nada.
+        self.assertGreater(gastado, presupuesto.consumo(self.store, run)["costo"])
+
+        self.assertAlmostEqual(cadena.techo_heredado(self.store, run, 2), 2 - gastado, places=6)
+
+        # Y cuando el linaje ya se comió el techo, heredar no es un ajuste: no hay.
+        with self.assertRaises(cadena.SinPresupuestoHeredado):
+            cadena.techo_heredado(self.store, run, gastado)
+
 
 # --- 6 — el directorio de trabajo -------------------------------------------
 
@@ -573,6 +655,7 @@ class Idempotencia(BaseCadena):
         estado = {
             "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
             "techo_cadena": PEDIDO["techo_costo_usd"],
+            "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
         }
         resultado = self.nodo()(estado)
 
@@ -587,6 +670,7 @@ class Idempotencia(BaseCadena):
         self.nodo()({
             "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
             "techo_cadena": PEDIDO["techo_costo_usd"],
+            "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
         })
         self.assertEqual(len(self.de_tipo(run, "directorio_trabajo")), 1)
         self.assertEqual(cadena.directorio_registrado(self.store, run), ruta)
@@ -781,6 +865,7 @@ class ReanudarConDirectorioRelativo(BaseCadena):
         self.nodo()({
             "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
             "techo_cadena": PEDIDO["techo_costo_usd"],
+            "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
         })
 
         # No se creó un segundo directorio y lo nuevo cayó junto a lo viejo.
@@ -797,6 +882,7 @@ class ReanudarConDirectorioRelativo(BaseCadena):
         self.nodo(developer_que_anota_el_paquete(paquetes))({
             "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
             "techo_cadena": PEDIDO["techo_costo_usd"],
+            "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
         })
 
         # U1 ya estaba entregada antes de reanudar y no se re-ejecutó, pero U3
@@ -1180,6 +1266,7 @@ class DepositoDeArtefactos(BaseCadena):
             self.nodo(espia)({
                 "run_id": run, "plan": plan, "pedido": dict(PEDIDO),
                 "techo_cadena": PEDIDO["techo_costo_usd"],
+                "techo_tiempo_cadena": PEDIDO["techo_tiempo_min"],
             })
 
         # Y no llegó a producir nada: falla antes de armar el contexto, no

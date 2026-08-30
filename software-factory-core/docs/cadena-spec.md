@@ -219,17 +219,43 @@ linaje y el descuento se calculan sobre una sola cadena.
 
 ## El techo de la cadena
 
-Los techos del Developer son **por unidad**. Por encima de ellos, **el techo de
-costo del pedido acota la suma de todas las corridas** —Requirement y todos los
-Developer— y se comprueba **antes de lanzar cada unidad**.
+Los techos del Developer son **por unidad**. Por encima de ellos, **los techos de
+costo y de tiempo del pedido acotan la cadena entera** y se comprueban **antes de
+lanzar cada unidad**.
 
 Es la defensa que reemplaza al Gate suprimido: un plan malo ya no se detecta con
 una firma, se paga con presupuesto, y el techo acota cuánto. Las dos cosas se
 decidieron juntas y no vale una sin la otra.
 
+**El costo se suma; el tiempo no.** El costo de la cadena es el de la corrida del
+pedido más el de todas las de Developer, porque cada una gasta plata aparte. El
+tiempo es uno solo: las corridas de Developer transcurren adentro de la ventana
+de la del pedido, y sumarlas contaría dos veces el mismo reloj. La medida del
+tiempo **descuenta las ventanas de Gate**, igual que `presupuesto.consumo`:
+esperar a que una persona resuelva un Gate no puede matar la cadena.
+
+**El techo de tiempo es por cadena y no por linaje**, al revés que el de costo,
+que se hereda descontado. Sumar el tiempo de las corridas previas del linaje
+contaría los días que pasaron entre una y otra, que es exactamente lo que
+descontar las ventanas de Gate quiere evitar.
+
 ```
-techo_cadena_alcanzado  {costo, limite, unidad}
+techo_cadena_alcanzado         {costo, limite, unidad}
+techo_tiempo_cadena_alcanzado  {tiempo_min, limite, unidad}
 ```
+
+### El exceso que queda abierto
+
+Los dos techos se comprueban **entre** unidades, no adentro de la corrida del
+Developer. La unidad ya empezada corre hasta su propio techo aunque la cadena
+cruce el del pedido en el medio: el exceso posible es **una unidad empezada**
+—con los parámetros de hoy, 0,50 USD y 10 minutos—, no N unidades.
+
+Cerrarlo se evaluó y se descartó el 2026-08-30. Exigiría que el techo de la
+cadena cruce la frontera entre `cadena.py` y `grafo_developer.py`, que hoy no
+sabe que hay una cadena arriba suyo. Acotado y conocido no es lo mismo que
+descontrolado, y la unidad en curso ya está gobernada por su propio techo. Queda
+escrito para que no se lo tome por un olvido.
 
 ## El directorio de trabajo
 
@@ -280,6 +306,7 @@ Ninguno exigió tocar el esquema de la base ni los triggers de inmutabilidad.
 | `unidad_lanzada` · `unidad_entregada` · `unidad_fallida` | pedido | Qué unidad, en qué corrida |
 | `plan_detenido` | pedido | Qué falló y qué quedó sin ejecutar |
 | `techo_cadena_alcanzado` | pedido | Cuánto se gastó y cuál era el límite |
+| `techo_tiempo_cadena_alcanzado` | pedido | Cuántos minutos netos llevaba la cadena y cuál era el límite |
 | `cadena_iniciada` | Developer | De qué corrida de Requirement viene |
 | `entrega_producida` | Developer | Cada iteración: la ruta, el rol y el **SHA-256** de cada archivo, y el depósito donde vive el contenido. Desde ADR-017 el contenido no va adentro |
 | `verificacion_ejecutada` | Developer | **Mismo nombre que en T7**, a propósito: `presupuesto.consumo` cuenta iteraciones contando ese tipo |
@@ -318,7 +345,7 @@ cambiaría en silencio quién ejecutó las unidades.
 
 ## Criterio de aceptación
 
-`tests/test_cadena.py`, sesenta y ocho tests contra un Operational State, un
+`tests/test_cadena.py`, 71 tests contra un Operational State, un
 checkpointer y un directorio de trabajo temporales.
 
 | Cubre | Qué comprueba |
@@ -329,7 +356,7 @@ checkpointer y un directorio de trabajo temporales.
 | Orden | Primero las unidades sin dependencias; cada unidad recibe las entregas de las que depende |
 | Reintento | Dos iteraciones, la segunda recibe entrega anterior e incumplimientos, y los archivos previos llegan intactos |
 | Detención | U1 entrega, U3 falla, **U2 no se lanza aunque no dependa de U3**; la cadena escala sin abrir el Gate de salida |
-| Techo de la cadena | Corta antes de lanzar la unidad que lo pasaría |
+| Techo de la cadena | Corta antes de lanzar la unidad que lo pasaría, por costo y por tiempo; esperar en un Gate no gasta el techo de tiempo; la heredera arranca con lo que queda del linaje y no con el total |
 | Directorio | Un subdirectorio por unidad; se borra recién tras el Gate aprobado; no se borra si escaló; una ruta que escapa no se escribe |
 | Idempotencia | Reentrar no relanza ni repaga lo entregado, y reusa el directorio |
 | Depósito de artefactos | El evento lleva hash y no contenido; la entrega se reconstruye desde el área; cada iteración deposita la suya, también la rechazada; un evento viejo con contenido se sigue leyendo; el hash detecta una alteración; falta un archivo y la cadena levanta en vez de armar un prompt incompleto; el corte deja archivos sin evento y el reintento los sobrescribe |
