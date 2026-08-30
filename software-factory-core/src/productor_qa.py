@@ -19,6 +19,42 @@ encabezado de ese módulo explica por qué—, pero decirlo evita gastar tokens 
 iteración en casos que van a la basura. El prompt sirve para que el agente sea
 eficiente; el código sirve para que no pueda pasarse de la raya. Son dos cosas
 distintas y ninguna reemplaza a la otra.
+
+## Por qué la derivación se escribe: auditabilidad, no control
+
+`LA_DERIVACION` le pide a QA que enuncie la promesa del criterio antes de
+instanciarla, y `procedimiento` pasa a llevar esa derivación escrita en vez de
+una glosa de la expresión.
+
+**Eso no agrega ningún control, y conviene no confundirse.** Que este caso pruebe
+este criterio y no otro no es acotable en código: el encabezado de
+`verificacion_sustantiva` tiene el argumento entero, y termina en que un control
+así equivaldría a una especificación ejecutable y total del criterio —y con ésa
+en la mano no harían falta ni QA ni el Developer—. Nada de lo que se escriba en
+un prompt convierte eso en una garantía: el modelo puede declarar una promesa y
+después instanciar otra cosa, y nadie lo va a frenar.
+
+Lo que cambia es que la derivación pase de implícita a escrita. Hoy un mal
+anclaje es indistinguible de uno bueno mirando el caso: dos expresiones que
+comparten función, aridad, archivo, literal esperado y número de criterio, y sólo
+se diferencian en lo que las cadenas significan. Con la promesa declarada al
+lado, la persona que abre la tabla lee "el criterio promete X" junto a un caso
+que prueba Y, y **el mal anclaje se puede leer como mal anclaje**. No se impide:
+se hace visible, que es todo lo que se puede hacer en esta capa.
+
+## Los supuestos de la entrega, y por qué no son criterios
+
+El Developer declara en `supuestos` lo que decidió donde el plan no decía. Son
+promesas hechas —escribió el código que las cumple— y no le llegaban a QA. En la
+primera corrida real el productor declaró que una entrada que no es string
+devuelve `false` y escribió la guarda; el caso que lo comprueba no apareció,
+porque QA no tenía cómo saber que la función aceptaba algo que no fuera un
+string. Una promesa hecha que no le llegó al que verifica.
+
+Viajan en el mensaje como contexto y no como criterios. La superficie de rechazo
+no crece: la tabla del veredicto tiene una fila por criterio del plan y ninguna
+por supuesto, así que un supuesto incumplido no tiene dónde aparecer. Lo que dan
+es dónde mirar dentro de un criterio que ya existe.
 """
 
 import json
@@ -75,15 +111,52 @@ Cada caso es un objeto con estos campos, todos obligatorios:
 
 - `criterio`: **el número del criterio del que deriva**, contando desde 1 en el
   orden en que aparecen abajo. Es lo que ata el caso a lo que el plan pidió.
-- `archivo`: el archivo de la entrega que el caso pone a prueba.
-- `procedimiento`: una frase que diga qué comprueba. Va en la tabla que lee una
-  persona.
+- `archivo`: el archivo de la entrega que el caso pone a prueba. Tiene que ser
+  uno de los archivos de la entrega, listados más abajo: la plataforma lo
+  reemplaza por un módulo vacío y vuelve a correr el caso, y si la salida no
+  cambia el caso no comprobaba nada y no cuenta como evidencia.
+- `procedimiento`: **la derivación escrita, en dos partes**: qué promete el
+  criterio y cómo este caso instancia esa promesa. No la mecánica del caso —lo
+  que hace la expresión ya se lee en `expresion` y repetirlo en prosa no agrega
+  nada—. Así se ve: "el criterio promete que ninguna dirección sin arroba se
+  acepta; este caso instancia esa promesa con una dirección que escribe la
+  arroba como palabra".
 - `expresion`: JavaScript de una sola expresión o secuencia, que **imprime en
   salida estándar** lo que hay que observar. Usá `process.stdout.write(...)` o
   `console.log(...)`; la salida se compara con `espera` recortando los espacios
   de los costados.
 - `espera`: la salida exacta que se espera. Comparación por igualdad, no por
   coincidencia parcial.\
+"""
+
+LA_DERIVACION = """\
+**Derivar son dos pasos, y el primero se escribe.** Antes de pensar entradas,
+enunciá qué **promete** el criterio: la propiedad general que la unidad afirma
+que vale. Recién después instanciá esa promesa en un caso concreto.
+
+    Criterio    "Dado un legajo con el formato equivocado, `validarLegajo`
+                devuelve inválido."
+    Promete     que ningún valor que no tenga el formato del legajo sea aceptado.
+    Instancia   `validarLegajo("44a1")` da inválido, porque una letra donde va un
+                dígito es exactamente no tener ese formato.
+
+**Variar la entrada no es derivar.** "El legajo válido, el vacío, el del largo
+equivocado y el del formato equivocado" son cuatro entradas parecidas salidas del
+mismo reflejo, y parecerse no las ancla: el del largo equivocado instancia la
+promesa del criterio que habla del largo, y colgado del que habla del formato, un
+fallo suyo cae sobre un criterio que nunca prometió eso.
+
+La pregunta que separa una cosa de la otra es una sola:
+
+> Si este caso falla, ¿queda desmentido lo que **este** criterio promete?
+
+Contestala antes de escribir la expresión, no después. Si la respuesta es no, el
+caso está anclado al criterio equivocado, y no hay entrada que lo arregle: lo que
+hay que cambiar es de qué criterio cuelga, o no escribirlo.
+
+Un criterio puede llevar varios casos —instancias distintas de la misma promesa,
+y ahí sí conviene ir a los bordes—. Lo que no puede llevar es casos que
+instancien otra cosa.\
 """
 
 EL_LIMITE = """\
@@ -100,10 +173,28 @@ El motivo no es de forma. Un rechazo por una capacidad ausente mete al Developer
 en un bucle que no se cierra corrigiendo, porque el blanco se mueve: se quema el
 techo entero contra un requerimiento que nunca se escribió.
 
-Lo que sí podés hacer, y para lo que estás: probar **los bordes de lo que sí se
-pidió**. Si el criterio dice que valida un legajo, probá el legajo válido, el
-vacío, el del largo equivocado y el del formato equivocado. Todos esos derivan
-del mismo criterio.
+**El límite corre para los dos lados, y con el mismo peso.** Todo lo de arriba
+custodia que no exijas de más. Quedarse corto no sale más barato: sale más caro
+de encontrar, porque un caso mal anclado pasa todos los filtros —el número de
+criterio existe, la expresión corre, la salida se compara— y produce un veredicto
+lo mismo.
+
+Las dos formas de quedarse corto:
+
+- **Un caso que prueba menos de lo que el criterio promete.** El criterio sale
+  "cumple" con la promesa comprobada a medias, y el Gate lo lee como verificado.
+  Es una firma en falso, y las firmas en falso no vuelven: se descubren cuando
+  alguien usa el software.
+- **Un caso que prueba otra cosa y se cuelga del criterio más parecido.** Si
+  falla, el incumplimiento se le imputa a un criterio que no prometía eso, y el
+  Developer termina corrigiendo contra un blanco que el plan nunca le puso.
+
+Esto no lo atrapa nadie más. La plataforma comprueba que el número de criterio
+exista y que la salida de tu caso dependa del entregable; **que el caso pruebe
+*ese* criterio no lo puede comprobar ninguna máquina**, y por eso te lo estamos
+pidiendo a vos en vez de programarlo. Si un criterio te queda sin ningún caso que
+lo instancie de verdad, dejalo sin caso: "no verificable mecánicamente" es un
+resultado, y un veredicto falso no.
 
 **Si un criterio no se puede comprobar ejecutando** —porque su procedimiento
 nombra abrir un HTML y mirarlo, o un intérprete que no es Node, o algo que no
@@ -155,6 +246,10 @@ norma, no sugerencia.
 
 {frontera}
 
+# Cómo se deriva un caso de un criterio
+
+{derivacion}
+
 # Forma de cada caso
 
 {forma_caso}
@@ -169,6 +264,7 @@ norma, no sugerencia.
 """.format(
         documentos=documentos,
         frontera=LA_FRONTERA,
+        derivacion=LA_DERIVACION,
         forma_caso=FORMA_DEL_CASO,
         limite=EL_LIMITE,
         forma=FORMA_DE_RESPUESTA,
@@ -219,6 +315,24 @@ def _archivos_del_deposito(entrega):
     )
 
 
+def _supuestos_de(entrega):
+    """Lo que el Developer decidió donde el plan no decía.
+
+    Son promesas hechas: el productor las escribió y escribió el código que las
+    cumple. Hasta que empezaron a viajar acá, QA instanciaba los criterios a
+    ciegas sobre ese margen —ver el encabezado del módulo—.
+
+    Se pasan como contexto, nunca como criterios. La distinción es sustantiva y
+    el prompt la dice: la tabla del veredicto tiene una fila por criterio del
+    plan y ninguna por supuesto, así que un supuesto incumplido no tiene dónde
+    aparecer. Lo que dan es dónde mirar dentro de un criterio que ya existe.
+    """
+    supuestos = list((entrega or {}).get("supuestos") or [])
+    if not supuestos:
+        return "El Developer no declaró supuestos."
+    return "\n".join("- %s" % str(s) for s in supuestos)
+
+
 def _mensaje(unidad, plan, entrega, deposito):
     return """\
 Produjeron una entrega para esta unidad y ya pasó la verificación estructural:
@@ -241,6 +355,31 @@ Numerados. El campo `criterio` de cada caso cita uno de estos números.
 
 {excluido}
 
+# Lo que el Developer decidió por su cuenta
+
+El plan deja cosas sin decir y el productor tuvo que decidirlas para poder
+escribir el código. Esto es lo que declaró haber decidido:
+
+{supuestos}
+
+Está acá porque son promesas hechas y no tenías cómo saberlas. Un supuesto te
+dice qué entradas el productor esperaba recibir, y ahí es donde una promesa del
+plan se puede estar cumpliendo a medias sin que se note.
+
+**No son criterios.** No podés derivar un caso de un supuesto ni rechazar porque
+un supuesto no se cumpla: la tabla del veredicto tiene una fila por Acceptance
+Criterion y ninguna por supuesto, así que eso no tiene dónde aparecer. Y un caso
+que sólo comprueba que la decisión del productor sea la que él dijo no prueba
+nada del plan: es el productor evaluándose a sí mismo con tu firma.
+
+Lo que sí: usalos para instanciar mejor un criterio que ya existe. Si el
+criterio promete rechazar lo inválido y el supuesto dice qué entradas la función
+acepta, ahí tenés instancias de esa promesa que sin el supuesto no se te habrían
+ocurrido.
+
+Si un supuesto contradice un criterio, manda el criterio. Que el productor haya
+decidido otra cosa no cambia lo que el plan pidió.
+
 # El depósito
 
 Los archivos de la entrega están en `{deposito}`, que es el directorio de trabajo
@@ -255,6 +394,7 @@ de tus expresiones. Estos son:
         artefacto=unidad.get("artefacto_esperado", ""),
         criterios=_criterios_numerados(unidad),
         excluido=_lo_excluido(plan),
+        supuestos=_supuestos_de(entrega),
         deposito=deposito,
         archivos=_archivos_del_deposito(entrega),
         forma=FORMA_DE_RESPUESTA,
