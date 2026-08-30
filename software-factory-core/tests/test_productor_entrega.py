@@ -187,8 +187,8 @@ class CalculoDeCosto(unittest.TestCase):
     def test_sale_de_los_tokens_declarados_y_del_precio(self):
         respuesta = Respuesta(json.dumps(ENTREGA), entrada=20000, salida=6000)
         (entrega, consumo), _ = producir({"respuesta": respuesta})
-        # Sonnet 5 declarado a 3/15 por millón.
-        esperado = (20000 * 3.00 + 6000 * 15.00) / 1_000_000
+        # Sonnet 5 declarado a 2/10 por millón.
+        esperado = (20000 * 2.00 + 6000 * 10.00) / 1_000_000
         self.assertAlmostEqual(consumo["costo"], esperado)
         self.assertEqual(consumo["output_tokens"], 6000)
         self.assertEqual(entrega["unidad"], "U2")

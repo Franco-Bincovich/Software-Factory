@@ -26,18 +26,45 @@ from verificador import cargar_esquema
 # mano cuando cambian: un precio desactualizado no falla, miente, y el techo de
 # costo deja de significar lo que dice.
 #
-# Nota: Sonnet 5 tiene precio introductorio de USD 2 / USD 10 hasta el
-# 2026-08-31. Se declara el precio de lista, que es el que rige después y el
-# que sobreestima —nunca subestima— el consumo real.
+# **Verificado el 2026-08-30** contra la tabla "Model pricing" de
+# https://platform.claude.com/docs/en/about-claude/pricing —a donde redirige
+# `docs.anthropic.com`—, las tres filas. Un precio sin fecha de verificación
+# tiene el mismo defecto que un conteo escrito a mano: nadie sabe si sigue
+# siendo cierto, y parece que sí.
 #
-# **Reverificar el 2026-08-31.** Ese día vence el introductorio y hay que
-# comprobar qué precio queda vigente. Si el de lista bajara a 2/10, esta tabla
-# pasaría a sobreestimar un 50% de forma permanente, y un techo medido con
-# precios inflados corta corridas que podían seguir.
+# Acá había una nota que decía que Sonnet 5 se declaraba a 3/15 —el precio de
+# lista— mientras regía un introductorio de 2/10, y que eso estaba bien porque
+# "sobreestima, nunca subestima". **El razonamiento era falso, y la premisa
+# también.** El aumento a 3/15 nunca ocurrió: el introductorio pasó a ser el
+# precio estándar y la tabla quedó cobrando 1,5x de más sobre todo.
+#
+# Lo que hay que recordar de eso no es la fecha, es esto: una tabla
+# desactualizada rompe el techo en **las dos** direcciones. La que subestima no
+# corta cuando tiene que cortar; la que sobreestima corta corridas que podían
+# seguir. Cuál de las dos domina depende de la mezcla de tokens de la corrida,
+# así que no se sabe de antemano. No existe la dirección segura en la que
+# equivocarse, y por eso no alcanza con que el error sea "conservador".
 PRECIOS_USD_POR_MTOK = {
-    "claude-sonnet-5": {"input": 3.00, "output": 15.00},
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
     "claude-opus-5": {"input": 5.00, "output": 25.00},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+}
+
+#: Multiplicadores del caché sobre el precio de **entrada** base, de la misma
+#: página y la misma fecha. La documentación los declara como la regla que
+#: genera las columnas de caché de la tabla de precios, y las quince filas de
+#: esa tabla la cumplen.
+#:
+#: Las claves son los nombres de los contadores tal como quedan en el desglose,
+#: para que `costo_de` los recorra sin traducir nada.
+#:
+#: **Los dos TTL cuestan distinto y por eso se cobran distinto.** La API manda
+#: los dos contadores por separado; hasta hoy los tirábamos y cobrábamos cero
+#: por los tres.
+MULTIPLICADORES_DE_CACHE = {
+    "ephemeral_5m_input_tokens": 1.25,
+    "ephemeral_1h_input_tokens": 2.0,
+    "cache_read_input_tokens": 0.1,
 }
 
 MODELO_POR_DEFECTO = "claude-sonnet-5"
@@ -277,14 +304,6 @@ def parsear_plan(texto):
     return plan
 
 
-def costo_de(uso, modelo):
-    """Costo real de una invocación, en dólares, según los tokens declarados."""
-    precio = PRECIOS_USD_POR_MTOK[modelo]
-    return (
-        uso.input_tokens * precio["input"] + uso.output_tokens * precio["output"]
-    ) / 1_000_000
-
-
 #: Campos del `usage` que se guardan cuando la API los manda. Sólo éstos: cada
 #: uno es un número que la respuesta declara, no una estimación nuestra. Los que
 #: vuelven `None` —`output_tokens_details` sin extended thinking encendido,
@@ -297,6 +316,72 @@ CAMPOS_DE_USO = (
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
 )
+
+#: Escritura de caché desglosada por TTL. La API la manda anidada bajo
+#: `cache_creation`, aparte de la suma plana de arriba.
+#:
+#: Se guarda porque los dos TTL cuestan distinto —1,25x la entrada base a 5
+#: minutos, 2x a una hora— y la suma sola no permite cobrar bien. Sin esto, el
+#: día que alguien agregue `"ttl": "1h"` el costo se duplica en silencio: el
+#: contador plano no cambia de nombre ni de forma, sólo pasa a valer el doble.
+CAMPOS_DE_CACHE_POR_TTL = (
+    "ephemeral_5m_input_tokens",
+    "ephemeral_1h_input_tokens",
+)
+
+
+def _escritura_sin_ttl(contadores):
+    """Escritura de caché que no viene desglosada por TTL, y hay que cobrar igual.
+
+    `cache_creation_input_tokens` es la suma de los dos TTL. Cuando el desglose
+    está, esta función devuelve cero y cada TTL se cobra a su precio. Cuando no
+    está —eventos escritos antes de que empezáramos a guardarlo— queda la suma
+    sola y hay que cobrarla a algún precio.
+
+    Se cobra a 5 minutos, y **no es una estimación prudente: es un hecho sobre
+    esas corridas.** Los dos `cache_control` de la fábrica son
+    `{"type": "ephemeral"}` sin `ttl`, y sin `ttl` la API cachea a 5 minutos. Lo
+    escrito en el registro hasta hoy es todo escritura de 5 minutos.
+
+    El día que alguien ponga `"ttl": "1h"`, esa llamada va a traer el desglose y
+    se va a cobrar al doble por la rama de arriba, no por ésta.
+    """
+    if any(campo in contadores for campo in CAMPOS_DE_CACHE_POR_TTL):
+        return 0
+    return contadores.get("cache_creation_input_tokens", 0)
+
+
+def costo_de(contadores, modelo):
+    """Costo real de una invocación, en dólares, según los tokens declarados.
+
+    **Cobra los cuatro contadores.** Antes cobraba dos, y con el caching
+    encendido en el Developer y en QA los tokens de caché no se cobraban: el
+    techo medía sobre una corrida más barata que la real.
+
+    Recibe el desglose de contadores —el mismo diccionario que después queda
+    escrito en el evento—, no el `usage` de la API, y eso es deliberado. La única
+    forma de saber qué habría costado una corrida vieja con la fórmula de hoy es
+    correr esta misma función sobre lo que quedó registrado. Si acá se pidiera un
+    objeto de la API, para recalcular habría que reescribir la fórmula, y una
+    fórmula duplicada no sirve para verificar a la otra: verifica a sí misma.
+
+    Los contadores que faltan valen cero. Eso es exactamente lo que corresponde a
+    los eventos viejos, que no los tienen: declararon lo que declararon y no se
+    reescriben.
+    """
+    precio = PRECIOS_USD_POR_MTOK[modelo]
+    total = (
+        contadores.get("input_tokens", 0) * precio["input"]
+        + contadores.get("output_tokens", 0) * precio["output"]
+    )
+    for campo, multiplicador in MULTIPLICADORES_DE_CACHE.items():
+        total += contadores.get(campo, 0) * precio["input"] * multiplicador
+    total += (
+        _escritura_sin_ttl(contadores)
+        * precio["input"]
+        * MULTIPLICADORES_DE_CACHE["ephemeral_5m_input_tokens"]
+    )
+    return total / 1_000_000
 
 
 def consumo_de(uso, modelo, stop_reason=None):
@@ -315,17 +400,30 @@ def consumo_de(uso, modelo, stop_reason=None):
     dos datos solos no alcanzan: el desglose muestra que una respuesta fue
     enorme y `stop_reason` dice si además quedó cortada.
 
-    Los tokens de caché se guardan aunque hoy sean cero. `costo_de` no los cobra
-    —y no podría cobrarlos con la fórmula que tiene: un token leído de caché se
-    factura a una décima parte y no viene dentro de `input_tokens`—, así que el
-    día que se encienda el caching el registro va a tener el dato desde antes de
-    que la fórmula lo use.
+    La escritura de caché se guarda dos veces y no es redundancia: plana en
+    `cache_creation_input_tokens`, que es la suma, y abierta por TTL bajo
+    `cache_creation`. Se cobra por la abierta, porque los dos TTL valen distinto.
+    La suma se guarda igual porque es lo que la API declara al mismo nivel que
+    los otros contadores y porque es la única forma de comparar contra los
+    eventos viejos, que sólo tienen ésa.
+
+    Los contadores se arman **antes** de cobrar y se cobran desde el mismo
+    diccionario que se guarda. Así el evento y el precio no pueden discrepar: lo
+    que quedó escrito es exactamente lo que se facturó.
     """
-    consumo = {"costo": costo_de(uso, modelo), "modelo": modelo}
+    contadores = {}
     for campo in CAMPOS_DE_USO:
         valor = getattr(uso, campo, None)
         if valor is not None:
-            consumo[campo] = valor
+            contadores[campo] = valor
+    creacion = getattr(uso, "cache_creation", None)
+    for campo in CAMPOS_DE_CACHE_POR_TTL:
+        valor = getattr(creacion, campo, None)
+        if valor is not None:
+            contadores[campo] = valor
+
+    consumo = {"costo": costo_de(contadores, modelo), "modelo": modelo}
+    consumo.update(contadores)
     razonamiento = getattr(
         getattr(uso, "output_tokens_details", None), "thinking_tokens", None
     )

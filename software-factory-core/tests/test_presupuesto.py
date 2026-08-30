@@ -1,7 +1,8 @@
-"""Criterio de aceptación de T12. Quince tests, uno por fila de la tabla.
+"""Criterio de aceptación de T12. Dieciséis tests, uno por fila de la tabla.
 
-Los tres últimos no son de T12: cubren que el desglose del consumo y el evento
-viejo de sólo `costo` se lean igual, que es lo que permite no migrar nada.
+Los tres de `ConsumoConDesglose` no son de T12: cubren que el desglose del
+consumo y el evento viejo de sólo `costo` se lean igual, que es lo que permite
+no migrar nada.
 """
 
 import json
@@ -17,6 +18,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 from operational_state import OperationalState  # noqa: E402
 from presupuesto import TechoAlcanzado, consumo, registrar_consumo, verificar  # noqa: E402
+from productor import costo_de  # noqa: E402
 
 AHORA = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -94,6 +96,67 @@ class ConsumoConDesglose(BasePresupuesto):
         resultado = verificar(self.store, self.run, self.definicion, ahora=AHORA)
         self.assertIsInstance(resultado, TechoAlcanzado)
         self.assertAlmostEqual(resultado.techos[0]["valor"], 2.1)
+
+
+class ElTechoCortaDondeTieneQueCortar(BasePresupuesto):
+    """Un techo que no cobra el caché no corta cuando tiene que cortar.
+
+    Los contadores son los cinco pasos de la corrida real
+    `f3b9ea3439164a82b30a44704fe34be4`, leídos de su desglose. Sirven porque
+    tienen las dos formas de token de caché que existen: escritura en el primer
+    paso del Developer y de QA, lectura en los segundos, cuando el prefijo ya
+    estaba cacheado.
+
+    Cobrando los cuatro contadores esa corrida vale 0,433029. Cobrando dos,
+    0,312690. **Entre esos dos números hay un 38% del techo en el que las dos
+    fórmulas dan veredictos opuestos**, y este test se para en el medio.
+    """
+
+    MODELO = "claude-sonnet-5"
+
+    PASOS = (
+        {"input_tokens": 9412, "output_tokens": 2770},
+        {"input_tokens": 880, "output_tokens": 1978,
+         "cache_creation_input_tokens": 23495,
+         "ephemeral_5m_input_tokens": 23495},
+        {"input_tokens": 1589, "output_tokens": 2263,
+         "cache_creation_input_tokens": 21075,
+         "ephemeral_5m_input_tokens": 21075},
+        {"input_tokens": 2150, "output_tokens": 13135,
+         "cache_read_input_tokens": 23495},
+        {"input_tokens": 1584, "output_tokens": 8000,
+         "cache_read_input_tokens": 21075},
+    )
+
+    TECHO = 0.40
+
+    @staticmethod
+    def sin_cobrar_el_cache(paso):
+        """El mismo paso como lo veía la fórmula vieja: dos contadores."""
+        return {c: paso[c] for c in ("input_tokens", "output_tokens")}
+
+    def gastar(self, pasos):
+        run = self.store.nuevo_run_id()
+        for paso in pasos:
+            registrar_consumo(self.store, run, costo_de(paso, self.MODELO))
+        return run
+
+    def test_la_formula_vieja_seguia_y_la_nueva_se_detiene(self):
+        definicion = Definicion(costo=self.TECHO)
+
+        vieja = self.gastar([self.sin_cobrar_el_cache(p) for p in self.PASOS])
+        self.assertAlmostEqual(
+            consumo(self.store, vieja, ahora=AHORA)["costo"], 0.312690, places=6
+        )
+        self.assertIsNone(verificar(self.store, vieja, definicion, ahora=AHORA))
+
+        nueva = self.gastar(self.PASOS)
+        self.assertAlmostEqual(
+            consumo(self.store, nueva, ahora=AHORA)["costo"], 0.433029, places=6
+        )
+        resultado = verificar(self.store, nueva, definicion, ahora=AHORA)
+        self.assertIsInstance(resultado, TechoAlcanzado)
+        self.assertIn("costo", resultado.nombres)
 
 
 class CostoBajoElTecho(BasePresupuesto):
