@@ -93,7 +93,7 @@ deliberado.
 python correr.py --reanudar <run_id>
 ```
 
-El agente produce el plan. Si no pasa las siete reglas, corrige y reintenta hasta
+El agente produce el plan. Si no pasa las ocho reglas, corrige y reintenta hasta
 el techo de iteraciones. Si pasa, abre el Gate de salida y vuelve a frenar.
 
 ### 5. Resolver el Gate de salida

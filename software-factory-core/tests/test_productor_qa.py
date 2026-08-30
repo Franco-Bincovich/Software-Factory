@@ -53,7 +53,8 @@ UNIDAD = {
     ],
     "dependencias": [],
     "rastreo": "validar el legajo",
-    "artefacto_esperado": "src/validar-legajo.js",
+    "artefacto_esperado": "Módulo con la validación del legajo",
+    "ruta_artefacto": "src/validar-legajo.js",
 }
 
 PLAN = {

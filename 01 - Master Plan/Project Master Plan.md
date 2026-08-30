@@ -28,7 +28,7 @@ existen como archivo.
 Criterio de cierre según [[PLAN-V0.1]]: capacidad operativa demostrada,
 no cantidad de documentos aprobados.
 
-ADRs aprobados: 19 (ADR-000 a ADR-006, ADR-008 a ADR-019).
+ADRs aprobados: 20 (ADR-000 a ADR-006, ADR-008 a ADR-020).
 
 **Bloque B de V0.1 cerrado el 2026-08-11**, T14 incluido: el armazón de
 ejecución corre de punta a punta. Fase siguiente: Bloque C —T15 primera corrida

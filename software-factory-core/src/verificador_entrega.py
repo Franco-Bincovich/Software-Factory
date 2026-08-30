@@ -51,7 +51,6 @@ MARCADORES_FRAGMENTO = (
     "rest of file", "same as before", "etc.",
 )
 RE_LINEA_PUNTOS = re.compile(r"^\s*(?://\s*|/\*\s*|<!--\s*|#\s*)?(?:\.{3}|…)\s*(?:\*/|-->)?\s*$")
-RE_RUTA_EN_TEXTO = re.compile(r"[\w.\-/]+\.[A-Za-z]{1,5}\b")
 RE_BACKTICK = re.compile(r"`([^`]+)`")
 RE_IDENTIFICADOR = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z]+(?:[A-Z][a-z0-9]*)+\b")
 
@@ -253,7 +252,26 @@ def _c3(entrega):
 
 
 def _c4(entrega, unidad):
-    """El artefacto que la unidad declaró esperar está en la entrega."""
+    """El artefacto que la unidad declaró esperar está en la entrega.
+
+    **La ruta se lee de `ruta_artefacto`, no de la prosa.** Hasta ADR-020 esta
+    regla sacaba rutas del texto de `artefacto_esperado` con una expresión
+    regular, y erraba en las dos direcciones a la vez: exigía
+    `src/validate_email.py` porque el plan lo había escrito precedido de "ej.",
+    y descartaba `validador.py` —que sí era la ruta que el plan quería— porque
+    no tenía barra. La información para distinguir un ejemplo de una decisión no
+    está en el texto, así que ninguna expresión regular mejor la iba a sacar.
+
+    `ruta_artefacto` en `null` es una decisión del plan: no fija la ruta. Sólo
+    queda en pie la primera mitad de la regla —que algo venga declarado como
+    artefacto esperado—, que es la que no depende de saber cuál.
+
+    **La ruta se compara entera, sin caer al nombre de archivo.** Antes
+    `src/a.js` satisfacía a `lib/a.js`, y eso tenía sentido cuando cada unidad
+    trabajaba en su propio subdirectorio y el prefijo era ruido. Con el espacio
+    único de ADR-019 el prefijo es parte de la decisión, y aceptar otro sería
+    volver a convertir la ruta declarada en una sugerencia.
+    """
     if unidad is None:
         return []
     fallos = []
@@ -261,21 +279,16 @@ def _c4(entrega, unidad):
         fallos.append(
             _incumplimiento("C4", "Ningún archivo de la entrega está declarado como artefacto esperado.")
         )
-    esperadas = [
-        token for token in RE_RUTA_EN_TEXTO.findall(unidad["artefacto_esperado"])
-        if "/" in token or ins.es_js(token) or ins.es_html(token)
-    ]
-    entregadas = {a["ruta"].replace("\\", "/") for a in entrega["archivos"]}
-    bases = {_base(r) for r in entregadas}
-    for esperada in esperadas:
-        limpia = esperada.replace("\\", "/")
-        if limpia in entregadas or _base(limpia) in bases:
-            continue
+    esperada = unidad.get("ruta_artefacto")
+    if not esperada:
+        return fallos
+    entregadas = {_normal(a["ruta"]) for a in entrega["archivos"]}
+    if _normal(esperada) not in entregadas:
         fallos.append(
             _incumplimiento(
                 "C4",
-                "La unidad %s declara el artefacto esperado '%s' y la entrega no lo trae."
-                % (unidad["id"], esperada),
+                "La unidad %s declara la ruta '%s' para su artefacto y la entrega "
+                "no la trae." % (unidad["id"], esperada),
             )
         )
     return fallos

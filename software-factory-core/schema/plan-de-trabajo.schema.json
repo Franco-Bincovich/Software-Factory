@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://software-factory/schema/plan-de-trabajo.schema.json",
   "title": "Plan de Trabajo",
-  "description": "Forma canonica del Plan de Trabajo segun T7. El esquema valida forma y tipos. Las restricciones de contenido que cubren las siete reglas no se declaran aca: si el esquema las rechazara, el verificador devolveria regla 0 y no llegaria a evaluarlas.",
+  "description": "Forma canonica del Plan de Trabajo segun T7. El esquema valida forma y tipos. Las restricciones de contenido que cubren las ocho reglas no se declaran aca: si el esquema las rechazara, el verificador devolveria regla 0 y no llegaria a evaluarlas.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -50,7 +50,8 @@
           "criterios",
           "dependencias",
           "rastreo",
-          "artefacto_esperado"
+          "artefacto_esperado",
+          "ruta_artefacto"
         ],
         "properties": {
           "id": { "type": "string" },
@@ -72,7 +73,11 @@
             "items": { "type": "string" }
           },
           "rastreo": { "type": "string" },
-          "artefacto_esperado": { "type": "string" }
+          "artefacto_esperado": { "type": "string" },
+          "ruta_artefacto": {
+            "type": ["string", "null"],
+            "description": "La ruta exacta del artefacto, si el plan decide fijarla. Es obligatorio y admite null: null significa 'no la fijo, la elige el Developer', que es una decision. Omitirlo no seria una decision, seria un olvido, y los dos se leerian igual. C4 exige esta ruta y no lee mas la prosa de artefacto_esperado, donde un ejemplo se volvia obligacion."
+          }
         }
       }
     },

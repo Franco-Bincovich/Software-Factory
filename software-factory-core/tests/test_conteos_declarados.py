@@ -1,9 +1,14 @@
-"""Guardián de los conteos declarados.
+"""Guardián de los conteos declarados, y de un hecho que no es un conteo.
 
-Una afirmación como "los trece campos" o "las siete reglas" es una norma que un
+Una afirmación como "los trece campos" o "las ocho reglas" es una norma que un
 agente lee en tiempo de ejecución: el Vault entra textual en el system prompt. Si
 la máquina tiene otro número, el agente aplica una norma que no existe. Este
 archivo hace que esa desincronización rompa la suite en vez de quedarse escrita.
+
+Lo mismo vale para el lenguaje de la Fábrica, que no es un número pero es el
+mismo problema: el Contrato de Entrega del Developer lo fija en prosa y
+`verificador.LENGUAJE_DE_LA_FABRICA` lo repite en código. Ver `LenguajeDeLaFabrica`
+al final, y ADR-020 para por qué está repetido en vez de importado.
 
 Cada conteo guardado se **deriva de la máquina por introspección** —el largo de
 una tupla, las funciones de un módulo, los `def test_` del árbol—. De la prosa se
@@ -185,13 +190,19 @@ def _valor_y_origen(clave):
 # número). El patrón tiene que identificar la afirmación sin ambigüedad dentro
 # de su archivo; si deja de encontrarse, el guardián lo dice.
 AFIRMACIONES = (
-    # --- las siete reglas de T7 -------------------------------------------
+    # --- las ocho reglas de T7 --------------------------------------------
     ("reglas_t7", "03 - Agent Framework/Verification.md",
      r"sus <N> reglas de validez"),
     ("reglas_t7", "03 - Agent Framework/Requirement Agent.md",
      r"las <N> reglas de validez del Contrato"),
     ("reglas_t7", "03 - Agent Framework/Requirement Agent.md",
      r"Las <N> reglas las evalúa"),
+    # Esta no estaba registrada y ADR-020 la encontró desfasada a mano. El
+    # `\s+` es porque la frase cruza el corte de línea.
+    ("reglas_t7", "03 - Agent Framework/Requirement Agent.md",
+     r"alguna de las <N>\s+reglas de validez"),
+    ("reglas_t7", "software-factory-core/docs/verificador-entrega-spec.md",
+     r"porque las <N> salen de un solo documento"),
     ("reglas_t7", "06 - Standards/Ruleset mecanico.md",
      r"las <N> reglas del Contrato del Plan"),
     ("reglas_t7", "06 - Standards/Ruleset mecanico.md",
@@ -402,6 +413,52 @@ class ConteosDeclarados(unittest.TestCase):
             + distintos
         )
         self.assertEqual(problemas, [], "\n" + "\n".join(problemas))
+
+
+CONTRATO_DEVELOPER = "03 - Agent Framework/Contrato de Entrega del Developer.md"
+
+#: La frase del Contrato que cierra el lenguaje. `<L>` es el hueco donde va el
+#: lenguaje, igual que `<N>` en las afirmaciones de conteo.
+CIERRE_DEL_LENGUAJE = r"En V0\.2 eso se cierra a favor de <L>\."
+
+
+class LenguajeDeLaFabrica(unittest.TestCase):
+    """La constante del verificador y el Contrato no se pueden contradecir.
+
+    La regla 8 de T7 rechaza un plan que compromete un lenguaje que el Developer
+    no sabe producir, y para eso `verificador.py` guarda el nombre del lenguaje
+    en una constante. La norma, sin embargo, vive en el Contrato de Entrega del
+    Developer, que es lo que el agente lee.
+
+    **El verificador de planes no importa el contrato del Developer, y es a
+    propósito.** Acoplar los dos módulos por diez palabras es caro y no hace
+    falta: alcanza con que este test falle el día que uno de los dos cambie sin
+    el otro. Es el mismo patrón que las afirmaciones de conteo de este archivo.
+    """
+
+    def test_la_constante_dice_lo_que_dice_el_contrato(self):
+        texto = (VAULT / CONTRATO_DEVELOPER).read_text(encoding="utf-8")
+        m = re.search(CIERRE_DEL_LENGUAJE.replace("<L>", r"(\w+)"), texto)
+        self.assertIsNotNone(
+            m,
+            f"{CONTRATO_DEVELOPER} — no se encontró el cierre del lenguaje "
+            f"/{CIERRE_DEL_LENGUAJE}/. Si la redacción cambió a propósito, "
+            f"volvé a registrarla acá.")
+        linea = texto.count("\n", 0, m.start()) + 1
+        self.assertEqual(
+            m.group(1), verificador.LENGUAJE_DE_LA_FABRICA,
+            f"\n{CONTRATO_DEVELOPER}:{linea} cierra V0.2 a favor de "
+            f"{m.group(1)!r} y `verificador.LENGUAJE_DE_LA_FABRICA` dice "
+            f"{verificador.LENGUAJE_DE_LA_FABRICA!r}.\n"
+            f"    La regla 8 estaría rechazando planes en nombre de un lenguaje "
+            f"que el Contrato ya no manda.")
+
+    def test_el_lenguaje_de_la_fabrica_no_esta_en_el_vocabulario_prohibido(self):
+        """Prohibir lo único que se puede producir haría inviable todo plan."""
+        self.assertNotIn(
+            verificador.LENGUAJE_DE_LA_FABRICA.lower(),
+            verificador.TERMINOS_AJENOS,
+        )
 
 
 if __name__ == "__main__":

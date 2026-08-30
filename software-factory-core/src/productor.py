@@ -20,7 +20,7 @@ from anthropic import Anthropic, APIError
 
 from grafo import FalloDeInfraestructura, RespuestaIlegible
 from intake import texto_rastreable
-from verificador import cargar_esquema
+from verificador import LENGUAJE_DE_LA_FABRICA, TERMINOS_AJENOS, cargar_esquema
 
 # Precios de lista en USD por millón de tokens, por modelo. Se actualizan a
 # mano cuando cambian: un precio desactualizado no falla, miente, y el techo de
@@ -98,10 +98,10 @@ class PlanNoParseable(ValueError):
 # --- prompt -----------------------------------------------------------------
 
 REGLAS_T7 = """\
-El verificador estructural (T7) evalúa siete reglas sobre el plan. Un plan que
+El verificador estructural (T7) evalúa ocho reglas sobre el plan. Un plan que
 incumple cualquiera de ellas se rechaza y hay que corregirlo.
 
-Antes de las siete comprueba el esquema JSON. Es una compuerta, no una de ellas:
+Antes de las ocho comprueba el esquema JSON. Es una compuerta, no una de ellas:
 si el plan no valida, el verificador devuelve `regla 0` y no evalúa nada más.
 
 Regla 1 — Toda unidad de trabajo declara al menos un Acceptance Criterion.
@@ -124,8 +124,26 @@ ignora mayúsculas.
 Regla 6 — El plan no supera diez unidades de trabajo. Si el problema necesita
 más, el pedido es demasiado grande y hay que escalarlo, no partirlo en once.
 
-Regla 7 — El grafo de dependencias no tiene ciclos.\
-"""
+Regla 7 — El grafo de dependencias no tiene ciclos.
+
+Regla 8 — **El lenguaje no lo elegís vos.** La Fábrica produce {lenguaje} en
+V0.2 y eso es un hecho del Contrato de Entrega del Developer, no algo que el
+plan suponga: la lógica de cada unidad la tiene que poder cargar un navegador,
+porque así es como se verifica. Un plan que pide otro lenguaje pide algo que el
+Developer no puede entregar.
+
+Por eso no nombres ningún otro lenguaje ni su herramienta de pruebas —{ajenos}
+y sus extensiones de archivo— en `supuestos`, en el `enunciado`, en el
+`artefacto_esperado`, en `ruta_artefacto` ni en ninguna de las tres partes de un
+criterio. **No declares el lenguaje como supuesto**: si el pedido no lo dice, no
+es que quede a criterio de nadie, es que ya está decidido.
+
+`fuera_de_alcance` y `alcance_excluido` no se miran: ahí nombrar un lenguaje es
+excluirlo, no comprometerse a él.\
+""".format(
+    lenguaje=LENGUAJE_DE_LA_FABRICA,
+    ajenos=", ".join(TERMINOS_AJENOS),
+)
 
 FORMA_DE_RESPUESTA = """\
 Respondé únicamente con el objeto JSON del plan. Sin texto antes, sin texto
@@ -176,6 +194,19 @@ términos comprobables. `procedimiento` dice cómo se hace la comprobación, con
 el detalle suficiente para que otra persona la repita. Un criterio que no se
 puede comprobar sin interpretar no cumple la regla 2 aunque tenga las tres
 partes llenas.
+
+# La ruta del artefacto es una decisión, no una ilustración
+
+`artefacto_esperado` es prosa: dice **qué** produce la unidad. `ruta_artefacto`
+es la ruta exacta, y el Developer está obligado a entregar ese archivo con ese
+nombre. Son dos campos porque son dos cosas.
+
+**No escribas rutas de ejemplo en la prosa.** Nada de "(ej. `src/algo.js`)". Si
+la ruta importa, va en `ruta_artefacto` y es vinculante. Si no querés fijarla
+—porque el Developer está en mejores condiciones de elegirla—, poné
+`ruta_artefacto` en `null`. Las dos son decisiones legítimas; lo que no existe
+es la ruta escrita al pasar, como quien da un ejemplo, que después alguien
+tiene que cumplir al pie de la letra.
 
 # Forma de la respuesta
 

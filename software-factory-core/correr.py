@@ -92,6 +92,7 @@ def producir_stub(pedido, plan_anterior, incumplimientos, contexto_vault):
                 "dependencias": [],
                 "rastreo": pedido["que_se_quiere"],
                 "artefacto_esperado": "Entregable ejecutable con su prueba asociada.",
+                "ruta_artefacto": None,
             }
         ],
         "supuestos": [

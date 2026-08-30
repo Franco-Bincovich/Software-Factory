@@ -44,7 +44,7 @@ Gates, T7 verifica, T13 persiste. T14 los ordena.
 | `intake` | Valida el pedido y abre la corrida | T8 |
 | `gate_entrada` | Somete pedido y techos, frena | T11 + `interrupt()` |
 | `producir` | Invoca al modelo para producir o corregir el plan | — |
-| `verificar` | Valida el plan contra las siete reglas | T7 |
+| `verificar` | Valida el plan contra las ocho reglas | T7 |
 | `gate_salida` | Somete el plan aprobado por T7, frena | T11 + `interrupt()` |
 | `escalar` | Registra el escalamiento y termina | T13 |
 | `fin` | Cierra la corrida | T13 |

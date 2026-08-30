@@ -95,11 +95,40 @@ class DefectoSembrado(unittest.TestCase):
         r = self._comprobar(e, plan(), "C3")
         self.assertEqual(r["incumplimientos"][0]["archivo"], "demo.html")
 
-    def test_c4_falta_el_artefacto_esperado(self):
+    def test_c4_falta_la_ruta_que_el_plan_fijo(self):
         p = plan()
-        p["unidades"][0]["artefacto_esperado"] = "src/validar-email.js y sus pruebas"
+        p["unidades"][0]["ruta_artefacto"] = "src/validar-email.js"
         r = self._comprobar(entrega(), p, "C4")
         self.assertIn("src/validar-email.js", r["incumplimientos"][0]["detalle"])
+
+    def test_c4_la_ruta_se_compara_entera_sin_caer_al_nombre_de_archivo(self):
+        """Con el espacio único de ADR-019 el prefijo es parte de la decisión."""
+        p = plan()
+        p["unidades"][0]["ruta_artefacto"] = "lib/validar-legajo.js"
+        r = self._comprobar(entrega(), p, "C4")
+        self.assertIn("lib/validar-legajo.js", r["incumplimientos"][0]["detalle"])
+
+    def test_c4_un_ejemplo_en_la_prosa_no_obliga_a_nada(self):
+        """El defecto de ADR-020: C4 leía "(ej. src/algo.py)" como obligación."""
+        p = plan()
+        p["unidades"][0]["artefacto_esperado"] = (
+            "Módulo con la validación (ej. `src/validate_email.py`) y sus pruebas."
+        )
+        p["unidades"][0]["ruta_artefacto"] = None
+        r = verificar(entrega(), p)
+        self.assertEqual(r["incumplimientos"], [])
+
+    def test_c4_sin_ruta_fijada_sigue_exigiendo_que_algo_sea_el_artefacto(self):
+        """`null` afloja la ruta, no la regla entera."""
+        e = entrega()
+        for a in e["archivos"]:
+            if a["rol"] == "artefacto_esperado":
+                a["rol"] = "auxiliar"
+                a["motivo"] = "Se entrega como apoyo de la unidad siguiente."
+        p = plan()
+        p["unidades"][0]["ruta_artefacto"] = None
+        r = verificar(e, p)
+        self.assertIn("C4", reglas(r))
 
     def test_c5_archivo_que_nadie_pidio(self):
         e = entrega()
@@ -124,15 +153,16 @@ class DefectoSembrado(unittest.TestCase):
         self.assertIn("archivo de pruebas", r["incumplimientos"][0]["detalle"])
 
     def test_c6_y_c4_son_independientes(self):
-        """Quitar demo.html rompe dos reglas distintas, y las dos se reportan.
+        """Quitar la lógica rompe dos reglas distintas, y las dos se reportan.
 
-        La unidad lo nombra en su artefacto esperado, así que falta el entregable
-        (C6) y falta el artefacto que el plan pidió (C4). Son dos cosas.
+        Falta uno de los cuatro entregables (C6) y falta el archivo que el plan
+        fijó como `ruta_artefacto` (C4). Son dos cosas, y el Developer las
+        corrige de maneras distintas.
         """
         e = entrega()
-        quitar(e, "demo.html")
+        quitar(e, "src/validar-legajo.js")
         r = verificar(e, plan())
-        self.assertEqual(reglas(r), {"C4", "C6"})
+        self.assertEqual(reglas(r) & {"C4", "C6"}, {"C4", "C6"})
 
     def test_c6_entrega_vacia_pide_escalamiento_y_no_reintento(self):
         e = entrega()
@@ -450,9 +480,8 @@ class EspacioQueAcumula(unittest.TestCase):
         # plan declara qué produce **esta** parte—, y esta parte escribe las
         # pruebas de una lógica que ya está en el espacio.
         p = plan()
-        p["unidades"][0]["artefacto_esperado"] = (
-            "tests/validar-legajo.test.js, pruebas.html y demo.html"
-        )
+        p["unidades"][0]["artefacto_esperado"] = "Las pruebas de la validación del legajo."
+        p["unidades"][0]["ruta_artefacto"] = "tests/validar-legajo.test.js"
 
         r = verificar(e, p, inventario=previo)
         self.assertEqual(r["incumplimientos"], [])

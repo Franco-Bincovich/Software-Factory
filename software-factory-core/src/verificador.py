@@ -4,12 +4,13 @@ Recibe un Plan de Trabajo y el texto del pedido que lo originó, y devuelve un
 veredicto binario más la lista de incumplimientos. No corrige, no interpreta, no
 completa: solo comprueba y localiza.
 
-Evalúa las siete reglas siempre; no corta en el primer incumplimiento. Si el
+Evalúa las ocho reglas siempre; no corta en el primer incumplimiento. Si el
 plan no valida contra el esquema, devuelve regla 0 y no evalúa el resto.
 """
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,59 @@ RAIZ = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = RAIZ / "schema" / "plan-de-trabajo.schema.json"
 
 PARTES_CRITERIO = ("condicion_observable", "resultado_esperado", "procedimiento")
+
+#: El lenguaje que el Developer Agent sabe producir. Es un hecho de la Fábrica,
+#: no una decisión de cada corrida: el [[Contrato de Entrega del Developer]] lo
+#: cierra a favor de JavaScript en V0.2 porque `pruebas.html` ejecuta la lógica
+#: real sin servidor, y eso obliga a que un navegador la pueda cargar.
+#:
+#: Está acá y no se lee del contrato a propósito. Que el verificador de planes
+#: importe el contrato del Developer es acoplamiento nuevo por diez palabras;
+#: la desincronización la vigila un test que compara los dos sin que ninguno
+#: dependa del otro, el mismo patrón de `test_conteos_declarados.py`.
+LENGUAJE_DE_LA_FABRICA = "JavaScript"
+
+#: Vocabulario cerrado de lo que la Fábrica **no** puede producir mientras
+#: V0.2 esté cerrada a JavaScript. Lenguajes y sus herramientas de prueba.
+#:
+#: Es una lista declarada, no una detección. No se intenta inferir el lenguaje
+#: de un plan —eso es adivinar, y una regla que adivina se equivoca en silencio—:
+#: se prohíben términos nombrados uno por uno, y el día que V0.3 abra otro
+#: lenguaje se saca de acá deliberadamente.
+#:
+#: **Lo que quedó afuera y por qué.** `cargo` es "a cargo de" en castellano.
+#: `go` y `gem` son palabras corrientes. `py` es demasiado corto para tener
+#: sentido solo. Un falso positivo acá cuesta un plan rechazado y una iteración
+#: pagada, así que un término ambiguo se deja pasar antes que arriesgarlo.
+TERMINOS_AJENOS = (
+    "python", "pytest", "unittest", "pip", "django", "flask",
+    "java", "junit", "maven", "gradle", "kotlin",
+    "ruby", "rspec", "rails",
+    "rust",
+    "golang",
+    "php", "phpunit", "laravel",
+    "swift", "xctest",
+    "csharp", "dotnet", "nunit",
+)
+
+#: Extensiones de archivo de esos mismos lenguajes. Van aparte porque se
+#: comparan distinto: un término se busca entre bordes de palabra, y una
+#: extensión no tiene borde a la izquierda —el punto viene pegado al nombre—.
+EXTENSIONES_AJENAS = (
+    ".py", ".java", ".rb", ".rs", ".go", ".php", ".swift", ".cs",
+)
+
+#: `\b` en los dos extremos para el término. Es la diferencia con la regla 5,
+#: que compara por subcadena porque sus términos los escribió el CEO en el
+#: pedido: acá la lista es nuestra y la subcadena mentiría —`java` está dentro
+#: de `javascript`, que es justo el lenguaje permitido—.
+_RE_AJENOS = re.compile(
+    "|".join(
+        [r"\b%s\b" % re.escape(t) for t in TERMINOS_AJENOS]
+        + [r"%s\b" % re.escape(e) for e in EXTENSIONES_AJENAS]
+    ),
+    re.IGNORECASE,
+)
 
 
 def _incumplimiento(regla, detalle, unidad=None, criterio=None):
@@ -165,6 +219,63 @@ def _regla_7(plan):
     ]
 
 
+def _regla_8(plan):
+    """El plan no compromete un lenguaje que la Fábrica no sabe producir.
+
+    Un plan que pide Python es un plan que el Developer no puede cumplir, y no
+    porque le falte capacidad: el Contrato de Entrega le exige entregar lógica
+    que un navegador cargue. Antes de esta regla la contradicción no la
+    comprobaba nadie y salía de dos maneras, las dos malas. Ruidosa: el plan
+    fija una ruta `.py`, C4 la exige, C6 exige la lógica ejecutable, y el
+    Developer oscila entre las dos hasta agotar el techo. Silenciosa: el plan
+    dice Python, el Developer entrega JavaScript porque es lo único que sabe
+    hacer, nada lo compara, y el Gate de salida firma una entrega que
+    contradice al plan que la originó. La segunda ya pasó y nadie la vio.
+
+    **Se miran los campos donde nombrar un lenguaje es comprometerse a él.** No
+    `fuera_de_alcance`, donde "no se implementa en Python" es una aclaración
+    legítima y prohibirla obligaría a escribir peor. No `alcance_excluido`, que
+    se copia literal del pedido: si el CEO escribió ahí la palabra, rechazar el
+    plan sería castigar al agente por obedecer.
+
+    Los criterios sí se miran, y no es exceso de celo: el criterio es lo que QA
+    ejecuta. Un plan que dice JavaScript en la unidad y `pytest` en el
+    procedimiento le pasa la contradicción entera al paso siguiente.
+    """
+    fallos = []
+
+    for i, supuesto in enumerate(plan["supuestos"]):
+        for termino in sorted(set(m.group(0).lower() for m in _RE_AJENOS.finditer(supuesto))):
+            fallos.append(
+                _incumplimiento(
+                    8,
+                    "El supuesto %d nombra '%s'. La Fábrica produce %s en V0.2 y el "
+                    "lenguaje no es un supuesto del plan: es un hecho del Contrato de "
+                    "Entrega del Developer." % (i + 1, termino, LENGUAJE_DE_LA_FABRICA),
+                )
+            )
+
+    for u in plan["unidades"]:
+        textos = [(campo, u[campo], None) for campo in ("enunciado", "artefacto_esperado")]
+        if u.get("ruta_artefacto"):
+            textos.append(("ruta_artefacto", u["ruta_artefacto"], None))
+        for j, criterio in enumerate(u["criterios"]):
+            for parte in PARTES_CRITERIO:
+                textos.append((parte, criterio.get(parte) or "", j))
+        for campo, texto, j in textos:
+            for termino in sorted(set(m.group(0).lower() for m in _RE_AJENOS.finditer(texto))):
+                fallos.append(
+                    _incumplimiento(
+                        8,
+                        "'%s' nombra '%s'. La Fábrica produce %s en V0.2."
+                        % (campo, termino, LENGUAJE_DE_LA_FABRICA),
+                        unidad=u["id"],
+                        criterio=j,
+                    )
+                )
+    return fallos
+
+
 # --- Orquestación -----------------------------------------------------------
 
 
@@ -184,6 +295,7 @@ def verificar(plan, pedido, esquema=None):
     incumplimientos += _regla_5(plan)
     incumplimientos += _regla_6(plan)
     incumplimientos += _regla_7(plan)
+    incumplimientos += _regla_8(plan)
 
     incumplimientos.sort(
         key=lambda i: (i["regla"], i["unidad"] or "", -1 if i["criterio"] is None else i["criterio"])

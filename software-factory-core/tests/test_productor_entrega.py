@@ -40,7 +40,8 @@ UNIDAD = {
     ],
     "dependencias": ["U1"],
     "rastreo": "validar el legajo",
-    "artefacto_esperado": "src/validar-legajo.js con sus pruebas",
+    "artefacto_esperado": "Módulo con la validación del legajo y sus pruebas",
+    "ruta_artefacto": "src/validar-legajo.js",
 }
 
 UNIDAD_VECINA = {
@@ -50,6 +51,7 @@ UNIDAD_VECINA = {
     "dependencias": [],
     "rastreo": "",
     "artefacto_esperado": "",
+    "ruta_artefacto": None,
 }
 
 CONTEXTO_UNIDADES = [
@@ -60,7 +62,8 @@ CONTEXTO_UNIDADES = [
             "criterios": [],
             "dependencias": [],
             "rastreo": "",
-            "artefacto_esperado": "src/leer.js",
+            "artefacto_esperado": "Módulo lector de altas",
+            "ruta_artefacto": "src/leer.js",
         },
         "entrega": {
             "unidad": "U1",

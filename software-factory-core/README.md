@@ -118,7 +118,7 @@ válido y en 1 si no lo es.
 }
 ```
 
-Evalúa las siete reglas siempre y devuelve la lista completa; no corta en el
+Evalúa las ocho reglas siempre y devuelve la lista completa; no corta en el
 primer incumplimiento. Si el plan no valida contra el esquema devuelve regla `0`
 y no evalúa el resto.
 
@@ -638,13 +638,13 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Cuatrocientos setenta y siete tests, uno por cada fila de los criterios de
+Cuatrocientos ochenta y ocho tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
-| `test_verificador.py` | 9 | los seis fixtures de T7 y tres sobre la forma de la salida |
+| `test_verificador.py` | 15 | los siete fixtures de T7, cinco sobre el vocabulario cerrado de la regla 8 y tres sobre la forma de la salida |
 | `test_intake.py` | 9 | el criterio de aceptación de T8 |
 | `test_agent_loader.py` | 10 | el criterio de aceptación de T10 |
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
@@ -653,13 +653,13 @@ después y las piezas de V0.2:
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
 | `test_productor.py` | 29 | el criterio de aceptación de T15, el desglose del consumo y la tabla de precios verificada con sus cuatro contadores |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
-| `test_verificador_entrega.py` | 47 | un defecto sembrado por regla sobre la entrega limpia, y las tres reglas que miran el inventario del espacio |
+| `test_verificador_entrega.py` | 50 | un defecto sembrado por regla sobre la entrega limpia, las tres reglas que miran el inventario del espacio y que C4 lea la ruta del campo y no de la prosa |
 | `test_cadena.py` | 68 | la cadena completa, el reintento, la detención, el techo de la cadena, el depósito de artefactos, el enganche de QA y qué hace cada nodo con una respuesta ilegible |
 | `test_productor_entrega.py` | 33 | el productor de entregas, con cliente falso |
 | `test_correr_cadena.py` | 33 | la costura entre la CLI y la cadena, el régimen declarado y el encendido de QA |
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
 | `test_aislamiento_del_estado.py` | 5 | que la suite no escriba en el área de estado real |
-| `test_conteos_declarados.py` | 4 | que ninguna afirmación del repo cite un número que la máquina ya no tiene |
+| `test_conteos_declarados.py` | 6 | que ninguna afirmación del repo cite un número que la máquina ya no tiene, ni un lenguaje que el Contrato del Developer ya no manda |
 | `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
 | `test_verificacion_sustantiva.py` | 40 | el anclaje, el veredicto por criterio, el invariante de la superficie de rechazo contra salidas fabricadas y el Control 4: que la evidencia dependa del artefacto |
 | `test_productor_qa.py` | 42 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, y la Agent Definition del QA Agent |
