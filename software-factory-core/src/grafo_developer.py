@@ -306,6 +306,11 @@ def _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion):
                 # operó. Sin registrarlos, "QA no exigió de más" es una
                 # afirmación sin cómo comprobarse.
                 "descartados": resultado["descartados"],
+                # Y éstos son los que sí se ejecutaron y no probaron nada: el
+                # Control 4. Van en una clave propia porque "QA no derivó un
+                # caso" y "QA derivó un caso vacuo" son fallas distintas y
+                # sumarlas rompería la métrica de abajo.
+                "sin_evidencia": resultado["sin_evidencia"],
                 # La métrica del punto 5 de ADR-018: cuánto de lo prometido no se
                 # pudo comprobar. Es una señal sobre el Requirement Agent.
                 "no_verificables": resultado["no_verificables"],

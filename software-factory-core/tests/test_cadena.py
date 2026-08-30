@@ -1216,6 +1216,33 @@ class ResultadoFalso(object):
         self.segundos = 0.0
 
 
+#: El entregable que el stub del Developer siempre produce. Los casos de QA
+#: tienen que nombrar un archivo real de la entrega desde el Control 1.
+ENTREGABLE_DEL_STUB = "src/u1.js"
+
+
+def caso_de_qa(criterio=1, expresion="correr()", espera="ok"):
+    return {
+        "criterio": criterio,
+        "expresion": expresion,
+        "espera": espera,
+        "archivo": ENTREGABLE_DEL_STUB,
+    }
+
+
+def tiene_centinela(deposito):
+    """Si el Control 4 reemplazó el entregable en esta copia del depósito."""
+    for ruta in Path(deposito).rglob("*"):
+        if not ruta.is_file():
+            continue
+        try:
+            if verificacion_sustantiva.MARCA_CENTINELA in ruta.read_text(encoding="utf-8"):
+                return True
+        except (OSError, UnicodeDecodeError):
+            continue
+    return False
+
+
 class EngancheDeQA(BaseCadena):
     """QA corre por unidad, después del verificador estructural.
 
@@ -1235,10 +1262,22 @@ class EngancheDeQA(BaseCadena):
         verificacion_sustantiva.ejecutor.ejecutar_expresion = self._ejecutar
         super().tearDown()
 
-    def ejecutor_que_devuelve(self, salida):
-        verificacion_sustantiva.ejecutor.ejecutar_expresion = (
-            lambda deposito, expresion: ResultadoFalso(salida)
-        )
+    def ejecutor_que_devuelve(self, salida, depende=True):
+        """Reemplaza el ejecutor por uno que devuelve lo que se le dice.
+
+        `depende` es la diferencia entre un caso que comprueba el entregable y
+        uno vacuo: con el centinela plantado, el que depende devuelve otra cosa
+        —y el Control 4 lo deja pasar como evidencia— y el que no, devuelve lo
+        mismo y queda descartado. Un doble que ignorara el depósito *sería* el
+        caso vacuo, así que la bandera no es un adorno.
+        """
+
+        def correr(deposito, expresion):
+            if depende and tiene_centinela(deposito):
+                return ResultadoFalso("sin el entregable no da lo mismo")
+            return ResultadoFalso(salida)
+
+        verificacion_sustantiva.ejecutor.ejecutar_expresion = correr
 
     def nodo_con_qa(self, qa_fn, developer=producir_entrega_stub):
         return cadena.nodo_ejecutar_unidades(
@@ -1377,7 +1416,7 @@ class EngancheDeQA(BaseCadena):
 
     def test_un_incumplimiento_sustantivo_manda_a_reintentar_por_el_mismo_bucle(self):
         self.ejecutor_que_devuelve("lo que no se esperaba")
-        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        casos = [caso_de_qa()]
         registro = []
         run, _, _ = self.correr_con_qa(
             qa_que_devuelve(casos), developer=developer_que_corrige(registro)
@@ -1394,7 +1433,7 @@ class EngancheDeQA(BaseCadena):
 
     def test_agotar_el_techo_del_developer_escala_y_detiene_el_plan(self):
         self.ejecutor_que_devuelve("lo que no se esperaba")
-        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        casos = [caso_de_qa()]
         run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
         (detenido,) = self.de_tipo(run, "plan_detenido")
         run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
@@ -1404,7 +1443,7 @@ class EngancheDeQA(BaseCadena):
     def test_qa_no_trae_techo_de_iteraciones_propio(self):
         """El que reintenta es el Developer; el techo que lo acota es el suyo."""
         self.ejecutor_que_devuelve("lo que no se esperaba")
-        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        casos = [caso_de_qa()]
         run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
         run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
         (techos,) = self.de_tipo(run_developer, "techos_efectivos")
@@ -1415,7 +1454,7 @@ class EngancheDeQA(BaseCadena):
 
     def test_qa_que_cumple_cierra_la_unidad(self):
         self.ejecutor_que_devuelve("ok")
-        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        casos = [caso_de_qa()]
         run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
         run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
         (evento,) = self.de_tipo(run_developer, "qa_ejecutado")
@@ -1430,7 +1469,7 @@ class EngancheDeQA(BaseCadena):
             raise verificacion_sustantiva.ejecutor.SinFrontera("no hay sandbox acá")
 
         verificacion_sustantiva.ejecutor.ejecutar_expresion = sin_frontera
-        casos = [{"criterio": 1, "expresion": "correr()", "espera": "ok"}]
+        casos = [caso_de_qa()]
         run, _, _ = self.correr_con_qa(qa_que_devuelve(casos))
         run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
         (escalado,) = self.de_tipo(run_developer, "escalamiento")
