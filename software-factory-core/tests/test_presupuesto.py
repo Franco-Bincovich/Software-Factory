@@ -1,4 +1,8 @@
-"""Criterio de aceptación de T12. Doce tests, uno por fila de la tabla."""
+"""Criterio de aceptación de T12. Quince tests, uno por fila de la tabla.
+
+Los tres últimos no son de T12: cubren que el desglose del consumo y el evento
+viejo de sólo `costo` se lean igual, que es lo que permite no migrar nada.
+"""
 
 import json
 import sqlite3
@@ -60,6 +64,36 @@ class SumaDeDeltas(BasePresupuesto):
         for _ in range(3):
             registrar_consumo(self.store, self.run, 0.5)
         self.assertEqual(consumo(self.store, self.run, ahora=AHORA)["costo"], 1.5)
+
+
+class ConsumoConDesglose(BasePresupuesto):
+    """Los dos formatos conviven. No se migra nada."""
+
+    def test_el_evento_nuevo_guarda_el_desglose_entero(self):
+        registrar_consumo(
+            self.store,
+            self.run,
+            {"costo": 0.5, "input_tokens": 8000, "output_tokens": 7000,
+             "stop_reason": "max_tokens", "modelo": "claude-sonnet-5"},
+        )
+        (evento,) = [
+            e for e in self.store.leer_run(self.run) if e["tipo"] == "consumo_registrado"
+        ]
+        self.assertEqual(evento["payload"]["output_tokens"], 7000)
+        self.assertEqual(evento["payload"]["stop_reason"], "max_tokens")
+
+    def test_el_evento_viejo_de_solo_costo_se_sigue_leyendo(self):
+        self.en(1, "consumo_registrado", payload={"costo": 0.5})
+        self.assertEqual(consumo(self.store, self.run, ahora=AHORA)["costo"], 0.5)
+
+    def test_el_techo_suma_el_costo_total_sin_mirar_el_desglose(self):
+        """Los dos formatos mezclados suman igual: el contador lee `costo`."""
+        self.en(1, "consumo_registrado", payload={"costo": 1.0})
+        registrar_consumo(self.store, self.run, {"costo": 0.6, "output_tokens": 900})
+        registrar_consumo(self.store, self.run, 0.5)
+        resultado = verificar(self.store, self.run, self.definicion, ahora=AHORA)
+        self.assertIsInstance(resultado, TechoAlcanzado)
+        self.assertAlmostEqual(resultado.techos[0]["valor"], 2.1)
 
 
 class CostoBajoElTecho(BasePresupuesto):

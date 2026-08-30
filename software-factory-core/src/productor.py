@@ -18,7 +18,7 @@ import re
 
 from anthropic import Anthropic, APIError
 
-from grafo import FalloDeInfraestructura
+from grafo import FalloDeInfraestructura, RespuestaIlegible
 from intake import texto_rastreable
 from verificador import cargar_esquema
 
@@ -285,6 +285,57 @@ def costo_de(uso, modelo):
     ) / 1_000_000
 
 
+#: Campos del `usage` que se guardan cuando la API los manda. Sólo éstos: cada
+#: uno es un número que la respuesta declara, no una estimación nuestra. Los que
+#: vuelven `None` —`output_tokens_details` sin extended thinking encendido,
+#: `server_tool_use` sin herramientas de servidor— no se guardan: un campo en
+#: cero y un campo ausente dicen cosas distintas, y confundirlos arruinaría la
+#: medición el día que se enciendan.
+CAMPOS_DE_USO = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
+
+
+def consumo_de(uso, modelo, stop_reason=None):
+    """Lo que costó una invocación **y en qué se fue**.
+
+    `costo` es el mismo número de siempre y se sigue llamando igual: es el que
+    suma el contador de techos y el que traen los eventos viejos.
+
+    Lo demás es el desglose. Existe porque un costo sin desglose no se puede
+    explicar: en la corrida `94cc2ae4` un paso de QA valió cuatro veces y media
+    que otro y produjo cero casos, y no había cómo saber si la plata se fue en
+    entrada o en salida. Con `output_tokens` al lado, eso se contesta leyendo el
+    evento.
+
+    `stop_reason` no sale del `usage` sino de la respuesta. Va igual, porque los
+    dos datos solos no alcanzan: el desglose muestra que una respuesta fue
+    enorme y `stop_reason` dice si además quedó cortada.
+
+    Los tokens de caché se guardan aunque hoy sean cero. `costo_de` no los cobra
+    —y no podría cobrarlos con la fórmula que tiene: un token leído de caché se
+    factura a una décima parte y no viene dentro de `input_tokens`—, así que el
+    día que se encienda el caching el registro va a tener el dato desde antes de
+    que la fórmula lo use.
+    """
+    consumo = {"costo": costo_de(uso, modelo), "modelo": modelo}
+    for campo in CAMPOS_DE_USO:
+        valor = getattr(uso, campo, None)
+        if valor is not None:
+            consumo[campo] = valor
+    razonamiento = getattr(
+        getattr(uso, "output_tokens_details", None), "thinking_tokens", None
+    )
+    if razonamiento is not None:
+        consumo["thinking_tokens"] = razonamiento
+    if stop_reason is not None:
+        consumo["stop_reason"] = stop_reason
+    return consumo
+
+
 # --- interfaz ---------------------------------------------------------------
 
 
@@ -343,7 +394,7 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
                 "el proveedor del modelo no respondió: %s" % error
             )
 
-        costo = costo_de(respuesta.usage, modelo)
+        consumo = consumo_de(respuesta.usage, modelo, respuesta.stop_reason)
 
         if respuesta.stop_reason == "refusal":
             # No se autocorrige: un rechazo por políticas no cambia porque se
@@ -351,18 +402,24 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
             raise FalloDeInfraestructura(
                 "el modelo rechazó el pedido por políticas de contenido. La "
                 "corrida se corta y el pedido se revisa a mano.",
-                costo=costo,
+                consumo=consumo,
             )
 
-        # Una respuesta cortada o no parseable es una iteración mala, no un
-        # fallo de la fábrica: se devuelve un plan vacío, T7 lo rechaza por la
-        # regla 0 y el ciclo de corrección hace su trabajo. La iteración se
-        # cobra y cuenta contra el techo, que es lo correcto: se gastó.
+        # Una respuesta cortada o no parseable sigue siendo una iteración mala y
+        # no un fallo de la fábrica: T7 rechaza el plan vacío por la regla 0 y el
+        # ciclo de corrección hace su trabajo. Lo que cambia es que ahora se dice
+        # cuál de las dos fue, en vez de devolver `{}` a secas y dejar que el
+        # registro no distinga una respuesta cortada de una ilegible.
         if respuesta.stop_reason == "max_tokens":
-            return {}, costo
+            raise RespuestaIlegible(
+                "truncada",
+                "el modelo llegó al techo de %d tokens de salida y la respuesta "
+                "quedó cortada." % MAX_TOKENS,
+                consumo=consumo,
+            )
         try:
-            return parsear_plan(_texto_de(respuesta)), costo
-        except PlanNoParseable:
-            return {}, costo
+            return parsear_plan(_texto_de(respuesta)), consumo
+        except PlanNoParseable as error:
+            raise RespuestaIlegible("no_parseable", str(error), consumo=consumo)
 
     return producir

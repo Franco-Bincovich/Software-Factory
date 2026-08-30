@@ -14,11 +14,12 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ / "src"))
 
 import productor  # noqa: E402
-from grafo import FalloDeInfraestructura  # noqa: E402
+from grafo import FalloDeInfraestructura, RespuestaIlegible  # noqa: E402
 from productor import (  # noqa: E402
     ModeloSinPrecio,
     PlanNoParseable,
     ProductorSinContexto,
+    consumo_de,
     costo_de,
     crear_productor,
     parsear_plan,
@@ -107,10 +108,34 @@ class CalculoDeCosto(unittest.TestCase):
 
     def test_el_productor_devuelve_el_costo_medido(self):
         producir, _ = productor_con(Respuesta(json.dumps(PLAN), 30_000, 4_000))
-        plan, costo = producir(PEDIDO, None, [], CONTEXTO)
+        plan, consumo = producir(PEDIDO, None, [], CONTEXTO)
         self.assertEqual(plan, PLAN)
         # 30k * 3/1M + 4k * 15/1M = 0.09 + 0.06
-        self.assertAlmostEqual(costo, 0.15)
+        self.assertAlmostEqual(consumo["costo"], 0.15)
+
+
+class DesgloseDelConsumo(unittest.TestCase):
+    """El desglose existe para poder explicar un costo, no sólo sumarlo."""
+
+    def test_lleva_los_tokens_que_la_api_declaro_y_el_stop_reason(self):
+        consumo = consumo_de(Uso(30_000, 4_000), "claude-sonnet-5", "end_turn")
+        self.assertAlmostEqual(consumo["costo"], 0.15)
+        self.assertEqual(consumo["modelo"], "claude-sonnet-5")
+        self.assertEqual(consumo["input_tokens"], 30_000)
+        self.assertEqual(consumo["output_tokens"], 4_000)
+        self.assertEqual(consumo["stop_reason"], "end_turn")
+
+    def test_lo_que_la_api_no_manda_no_se_inventa(self):
+        """Un campo ausente y un campo en cero dicen cosas distintas."""
+        consumo = consumo_de(Uso(10, 10), "claude-sonnet-5")
+        self.assertNotIn("thinking_tokens", consumo)
+        self.assertNotIn("cache_read_input_tokens", consumo)
+        self.assertNotIn("stop_reason", consumo)
+
+    def test_el_cero_declarado_si_se_guarda(self):
+        uso = Uso(10, 10)
+        uso.cache_read_input_tokens = 0
+        self.assertEqual(consumo_de(uso, "claude-sonnet-5")["cache_read_input_tokens"], 0)
 
 
 # --- prompt -----------------------------------------------------------------
@@ -195,21 +220,38 @@ class Parseo(unittest.TestCase):
 
 
 class RespuestaInutilizable(unittest.TestCase):
-    """No es un fallo de la fábrica: es una iteración mala, y se cobra."""
+    """No es un fallo de la fábrica: es una iteración mala, y se cobra.
 
-    def test_json_invalido_devuelve_plan_vacio_con_su_costo(self):
+    Antes devolvía el plan vacío y el registro no distinguía por qué. Ahora la
+    causa viaja en `motivo`, y el consumo ya pagado viaja con ella.
+    """
+
+    def test_json_invalido_dice_que_no_se_pudo_parsear(self):
         producir, _ = productor_con(Respuesta("acá va el plan: enseguida lo escribo"))
-        plan, costo = producir(PEDIDO, None, [], CONTEXTO)
-        self.assertEqual(plan, {})
-        self.assertGreater(costo, 0)
+        with self.assertRaises(RespuestaIlegible) as capturado:
+            producir(PEDIDO, None, [], CONTEXTO)
+        self.assertEqual(capturado.exception.motivo, "no_parseable")
+        self.assertGreater(capturado.exception.consumo["costo"], 0)
 
-    def test_respuesta_cortada_por_max_tokens_tambien(self):
+    def test_respuesta_cortada_por_max_tokens_dice_que_quedo_cortada(self):
         producir, _ = productor_con(
             Respuesta('{"plan_id": "PLAN', stop_reason="max_tokens")
         )
-        plan, costo = producir(PEDIDO, None, [], CONTEXTO)
-        self.assertEqual(plan, {})
-        self.assertGreater(costo, 0)
+        with self.assertRaises(RespuestaIlegible) as capturado:
+            producir(PEDIDO, None, [], CONTEXTO)
+        self.assertEqual(capturado.exception.motivo, "truncada")
+        self.assertIn(str(productor.MAX_TOKENS), capturado.exception.detalle)
+
+    def test_las_dos_causas_no_se_confunden(self):
+        """Truncada y no parseable son fallas distintas y se cuentan distinto."""
+        cortada, _ = productor_con(Respuesta("{", stop_reason="max_tokens"))
+        ilegible, _ = productor_con(Respuesta("{"))
+        motivos = []
+        for producir in (cortada, ilegible):
+            with self.assertRaises(RespuestaIlegible) as capturado:
+                producir(PEDIDO, None, [], CONTEXTO)
+            motivos.append(capturado.exception.motivo)
+        self.assertEqual(motivos, ["truncada", "no_parseable"])
 
     def test_el_plan_vacio_lo_rechaza_t7_por_la_regla_0(self):
         from verificador import verificar
@@ -237,7 +279,7 @@ class FallosDeInfraestructura(unittest.TestCase):
         with self.assertRaises(FalloDeInfraestructura) as capturado:
             producir(PEDIDO, None, [], CONTEXTO)
         self.assertIn("políticas de contenido", str(capturado.exception))
-        self.assertAlmostEqual(capturado.exception.costo, 0.03)
+        self.assertAlmostEqual(capturado.exception.consumo["costo"], 0.03)
 
 
 class SinContextoDelVault(unittest.TestCase):

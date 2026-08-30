@@ -188,7 +188,7 @@ def developer_que_declara_ambigua(unidad_id, motivo):
     def producir(unidad, contexto, entrega_anterior, incumplimientos, contexto_vault,
                  paquete=None):
         if unidad["id"] == unidad_id:
-            raise UnidadAmbigua(motivo, costo=0.05)
+            raise UnidadAmbigua(motivo, consumo=0.05)
         return producir_entrega_stub(
             unidad, contexto, entrega_anterior, incumplimientos, contexto_vault
         )
@@ -1480,7 +1480,7 @@ class EngancheDeQA(BaseCadena):
 
     def test_un_fallo_de_infraestructura_del_productor_escala(self):
         def se_cae(unidad, plan, entrega, deposito, contexto_vault):
-            raise grafo.FalloDeInfraestructura("el proveedor no respondió", costo=0.02)
+            raise grafo.FalloDeInfraestructura("el proveedor no respondió", consumo=0.02)
 
         run, _, _ = self.correr_con_qa(se_cae)
         run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
@@ -1500,6 +1500,81 @@ class EngancheDeQA(BaseCadena):
             for e in self.de_tipo(run_developer, "consumo_registrado")
         ]
         self.assertIn(0.07, consumos)
+
+    def test_una_respuesta_ilegible_de_qa_escala_en_vez_de_aprobar(self):
+        """Antes esto pasaba el Gate. Es el agujero que la rama cierra.
+
+        Cero casos hace que todos los criterios salgan
+        `no_verificable_mecanicamente`, y eso aprueba. Una respuesta que no se
+        pudo leer firmaba la unidad con el mismo aspecto que un QA que miró.
+        """
+
+        def ilegible(unidad, plan, entrega, deposito, contexto_vault):
+            raise grafo.RespuestaIlegible(
+                "no_parseable", "Expecting value: line 1 column 1", consumo=0.12
+            )
+
+        run, _, _ = self.correr_con_qa(ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "respuesta_ilegible")
+        self.assertEqual(evento["payload"]["etapa"], "qa")
+        self.assertEqual(evento["payload"]["motivo"], "no_parseable")
+        self.assertIn("Expecting value", evento["payload"]["detalle"])
+        (escalado,) = self.de_tipo(run_developer, "escalamiento")
+        self.assertEqual(escalado["payload"]["motivo"], "escalado_por_qa_ilegible")
+        # Nadie miró la unidad, y por eso no hay veredicto que la firme.
+        self.assertEqual(self.de_tipo(run_developer, "qa_ejecutado"), [])
+        self.assertEqual(len(self.de_tipo(run, "plan_detenido")), 1)
+
+    def test_lo_que_qa_alcanzo_a_gastar_se_cobra_igual(self):
+        def ilegible(unidad, plan, entrega, deposito, contexto_vault):
+            raise grafo.RespuestaIlegible("truncada", "llegó al techo", consumo=0.12)
+
+        run, _, _ = self.correr_con_qa(ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        consumos = [
+            e["payload"]["costo"]
+            for e in self.de_tipo(run_developer, "consumo_registrado")
+        ]
+        self.assertIn(0.12, consumos)
+
+    def test_qa_que_no_propone_nada_y_se_lo_pudo_leer_no_escala(self):
+        """El silencio legítimo sigue pasando. La línea es si se entendió.
+
+        Es el contraste que justifica el test de arriba: si los dos silencios
+        terminaran igual, distinguirlos no serviría de nada.
+        """
+
+        def sin_casos(unidad, plan, entrega, deposito, contexto_vault):
+            return [], 0.01
+
+        run, _, _ = self.correr_con_qa(sin_casos)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        self.assertEqual(self.de_tipo(run_developer, "respuesta_ilegible"), [])
+        (evento,) = self.de_tipo(run_developer, "qa_ejecutado")
+        self.assertTrue(evento["payload"]["cumple"])
+        self.assertEqual(self.de_tipo(run, "plan_detenido"), [])
+
+    def test_una_respuesta_ilegible_del_developer_se_anota_y_sigue_el_ciclo(self):
+        """El otro lado de la asimetría: acá hay un verificador abajo.
+
+        La entrega vacía la rechaza el verificador, el bucle de corrección
+        reintenta, y si no alcanza escala por iteraciones —no por ilegible—.
+        Gastó una iteración; no aprobó nada.
+        """
+
+        def ilegible(unidad, contexto, entrega, incumplimientos, contexto_vault,
+                     paquete=None):
+            raise grafo.RespuestaIlegible("truncada", "llegó al techo", consumo=0.01)
+
+        run, _, _ = self.correr_cadena(developer=ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        eventos = self.de_tipo(run_developer, "respuesta_ilegible")
+        self.assertTrue(eventos)
+        self.assertEqual(eventos[0]["payload"]["etapa"], "entrega")
+        self.assertTrue(self.de_tipo(run_developer, "verificacion_ejecutada"))
+        (escalado,) = self.de_tipo(run_developer, "escalamiento")
+        self.assertEqual(escalado["payload"]["motivo"], "escalado_por_iteraciones")
 
 
 if __name__ == "__main__":

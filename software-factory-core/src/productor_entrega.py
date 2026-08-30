@@ -29,13 +29,13 @@ import json
 
 from anthropic import APIError
 
-from grafo import FalloDeInfraestructura, UnidadAmbigua
+from grafo import FalloDeInfraestructura, RespuestaIlegible, UnidadAmbigua
 from productor import (
     MODELO_POR_DEFECTO,
     PRECIOS_USD_POR_MTOK,
     ModeloSinPrecio,
     _CERCA_JSON,
-    costo_de,
+    consumo_de,
 )
 from verificador_entrega import REGLAS, cargar_esquema
 
@@ -499,7 +499,7 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
                 "el proveedor del modelo no respondió: %s" % error
             )
 
-        costo = costo_de(respuesta.usage, modelo)
+        consumo = consumo_de(respuesta.usage, modelo, respuesta.stop_reason)
 
         if respuesta.stop_reason == "refusal":
             # No se autocorrige: un rechazo por políticas no cambia porque se
@@ -507,26 +507,35 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
             raise FalloDeInfraestructura(
                 "el modelo rechazó la unidad por políticas de contenido. La "
                 "corrida se corta y la unidad se revisa a mano.",
-                costo=costo,
+                consumo=consumo,
             )
 
-        # Una respuesta cortada o no parseable es una iteración mala, no un fallo
-        # de la fábrica: se devuelve una entrega vacía, el verificador la rechaza
-        # y el ciclo de corrección hace su trabajo. La iteración se cobra y
-        # cuenta contra el techo, que es lo correcto: se gastó.
+        # Una respuesta cortada o no parseable sigue siendo una iteración mala y
+        # no un fallo de la fábrica: el verificador rechaza la entrega vacía y el
+        # ciclo de corrección hace su trabajo. Lo que cambia es que ahora queda
+        # escrito cuál de las dos fue.
+        #
+        # Ojo con la vecindad: la entrega vacía **deliberada** está unas líneas
+        # más abajo y sale por `UnidadAmbigua`. Ésa parseó bien y dice un motivo;
+        # ésta no se pudo leer. Que las dos terminen sin entrega no las iguala.
         if respuesta.stop_reason == "max_tokens":
-            return {}, costo
+            raise RespuestaIlegible(
+                "truncada",
+                "el modelo llegó al techo de %d tokens de salida y la respuesta "
+                "quedó cortada." % MAX_TOKENS,
+                consumo=consumo,
+            )
         try:
             entrega = parsear_entrega(_texto_de(respuesta))
-        except EntregaNoParseable:
-            return {}, costo
+        except EntregaNoParseable as error:
+            raise RespuestaIlegible("no_parseable", str(error), consumo=consumo)
 
         if es_entrega_vacia(entrega):
             # El contrato la declara válida y dispara escalamiento. No es un
             # defecto a corregir: reintentarla sería mandar a adivinar
             # exactamente lo que el contrato prohíbe adivinar.
-            raise UnidadAmbigua(motivo_de(entrega), costo=costo)
+            raise UnidadAmbigua(motivo_de(entrega), consumo=consumo)
 
-        return entrega, costo
+        return entrega, consumo
 
     return producir

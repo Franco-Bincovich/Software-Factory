@@ -165,14 +165,13 @@ class FalloDeInfraestructura(RuntimeError):
     es una iteración mala —eso lo resuelve T7 y el ciclo de corrección— sino que
     la fábrica no pudo producir. Se registra y se escala.
 
-    Lleva el costo ya consumido cuando lo hay: una invocación que se pagó y
-    falló igual sigue siendo consumo, y omitirla le mentiría al techo de
-    ADR-010.
+    Lleva el consumo ya hecho cuando lo hay: una invocación que se pagó y falló
+    igual sigue siendo consumo, y omitirla le mentiría al techo de ADR-010.
     """
 
-    def __init__(self, mensaje, costo=0.0):
+    def __init__(self, mensaje, consumo=0.0):
         super().__init__(mensaje)
-        self.costo = costo
+        self.consumo = consumo
 
 
 class RegimenIncumplido(RuntimeError):
@@ -200,13 +199,43 @@ class UnidadAmbigua(RuntimeError):
     vocabulario que el productor le habla al grafo, y el grafo no importa
     productores.
 
-    Lleva el costo ya consumido: la invocación se pagó igual.
+    Lleva el consumo ya hecho: la invocación se pagó igual.
     """
 
-    def __init__(self, motivo, costo=0.0):
+    def __init__(self, motivo, consumo=0.0):
         super().__init__(motivo)
         self.motivo = motivo
-        self.costo = costo
+        self.consumo = consumo
+
+
+class RespuestaIlegible(RuntimeError):
+    """El modelo contestó y no se pudo leer lo que contestó.
+
+    No es lo mismo que no decir nada, y ésa es toda la razón de que esta clase
+    exista. Antes las dos causas de abajo devolvían el artefacto vacío —`{}` o
+    `[]`— igual que un agente que contesta bien y no propone nada, y las tres
+    situaciones quedaban indistinguibles en el registro.
+
+    Las dos causas viajan nombradas en `motivo`:
+
+    - `truncada`: el modelo llegó al techo de salida y la respuesta quedó
+      cortada. `detalle` dice contra qué techo.
+    - `no_parseable`: la respuesta terminó pero no es el JSON que se esperaba.
+      `detalle` lleva lo que dijo el parser, que hasta ahora se descartaba.
+
+    Vive acá por lo mismo que las dos de arriba: es vocabulario que el productor
+    le habla al grafo.
+
+    **El grafo no la trata igual en todos lados, y eso es deliberado.** Ver
+    `grafo_developer._nodo_qa`, que la escala, contra los dos `_nodo_producir`,
+    que siguen el ciclo de corrección. El porqué está escrito en cada uno.
+    """
+
+    def __init__(self, motivo, detalle, consumo=0.0):
+        super().__init__("%s: %s" % (motivo, detalle))
+        self.motivo = motivo
+        self.detalle = detalle
+        self.consumo = consumo
 
 
 class _Techos(object):
@@ -447,8 +476,8 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 estado["pedido"], estado["plan"], estado["incumplimientos"], contexto
             )
         except FalloDeInfraestructura as fallo:
-            if fallo.costo:
-                presupuesto.registrar_consumo(store, run_id, fallo.costo)
+            if fallo.consumo:
+                presupuesto.registrar_consumo(store, run_id, fallo.consumo)
             store.append(
                 run_id,
                 "fallo_infraestructura",
@@ -456,6 +485,29 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
                 {"detalle": str(fallo), "iteracion": estado["iteracion"]},
             )
             return {"resultado": "escalado_por_infraestructura"}
+        except RespuestaIlegible as ilegible:
+            # Se anota y se sigue. Abajo de este nodo está T7, que rechaza el plan
+            # vacío por la regla 0 y devuelve incumplimientos: el bucle de
+            # corrección reintenta y, si tres iteraciones no alcanzan, la corrida
+            # escala igual. Una respuesta ilegible acá gasta una iteración, no
+            # aprueba nada. Lo único que faltaba era decir por qué se gastó.
+            #
+            # `grafo_developer._nodo_qa` hace lo contrario con esta misma
+            # excepción, y el porqué está escrito ahí: QA no tiene verificador
+            # abajo, así que su silencio sí aprueba.
+            store.append(
+                run_id,
+                "respuesta_ilegible",
+                PLATAFORMA,
+                {
+                    "etapa": "plan",
+                    "motivo": ilegible.motivo,
+                    "detalle": ilegible.detalle,
+                    "iteracion": estado["iteracion"],
+                },
+            )
+            # El consumo sigue el camino normal de abajo: la invocación se pagó.
+            producido = ({}, ilegible.consumo)
 
         if isinstance(producido, tuple):
             plan, costo = producido

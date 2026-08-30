@@ -198,7 +198,7 @@ def productor_sin_proveedor(costo=0.0):
     """Simula que el proveedor del modelo no respondió."""
 
     def producir(pedido, plan_anterior, incumplimientos, contexto_vault):
-        raise grafo.FalloDeInfraestructura("el proveedor no respondió", costo=costo)
+        raise grafo.FalloDeInfraestructura("el proveedor no respondió", consumo=costo)
 
     return producir
 
