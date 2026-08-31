@@ -327,10 +327,10 @@ class PromptInicial(unittest.TestCase):
             self.assertIn(contenido, sistema)
         self.assertIn("plan-de-trabajo", json.dumps(productor.cargar_esquema()))
         self.assertIn("alcance_excluido", sistema)
-        # Las ocho reglas más la compuerta del esquema: el prompt nombra cada
+        # Las nueve reglas más la compuerta del esquema: el prompt nombra cada
         # identificador que el verificador puede devolver. La 0 aparece en
         # minúscula porque el prompt la presenta como compuerta, no como regla.
-        for regla in range(9):
+        for regla in range(10):
             self.assertIn("regla %d" % regla, sistema.lower())
 
         usuario = llamada["messages"][0]["content"]
@@ -340,6 +340,46 @@ class PromptInicial(unittest.TestCase):
         self.assertIn("interfaz gráfica", usuario)
         # El texto contra el que T7 evalúa la regla 4 va literal.
         self.assertIn(PEDIDO["que_se_quiere"] + "\n" + PEDIDO["para_que"], usuario)
+
+
+class FormaDelProcedimiento(unittest.TestCase):
+    """Lo que el prompt enseña sobre `procedimiento`, que es la mitad no mecánica
+    de ADR-021.
+
+    La regla 9 sola sería un portón cerrado: siete de los ocho planes del
+    registro tenían al menos un criterio que delega, así que sin esta enseñanza
+    cada corrida entraría en un ciclo de rebotes. Y la regla rebota el plan
+    entero, no el criterio.
+
+    El texto del prompt está cortado a mano a 78 columnas en el fuente, así que
+    las frases se buscan contra la versión de un solo renglón. Sin esto, una
+    aserción sobre una frase que cruza un salto de línea falla estando el texto.
+    """
+
+    def setUp(self):
+        producir, cliente = productor_con(Respuesta(json.dumps(PLAN)))
+        producir(PEDIDO, None, [], CONTEXTO)
+        self.corrido = " ".join(cliente.llamadas[0]["system"].split())
+
+    def test_dice_la_forma_correcta_antes_que_la_prohibicion(self):
+        forma = self.corrido.index("dice qué se invoca, con qué entrada")
+        contra = self.corrido.index("Correr el comando de ejecución de pruebas")
+        self.assertLess(forma, contra)
+
+    def test_lleva_el_contraejemplo_de_la_delegacion(self):
+        self.assertIn("Correr el comando de ejecución de pruebas del proyecto", self.corrido)
+        self.assertIn("Ejecutar la suite y confirmar que termina sin fallos", self.corrido)
+
+    def test_cierra_la_salida_por_perifrasis(self):
+        """Prohibir el nombre no prohíbe la conducta: es lo que pasó con la 8."""
+        self.assertIn("no alcanza con sacarle el nombre a la herramienta", self.corrido)
+        self.assertIn("se ejecuta el archivo de verificación del proyecto", self.corrido)
+
+    def test_no_le_prohibe_a_la_unidad_producir_pruebas(self):
+        self.assertIn("Podés pedir un archivo de pruebas en `artefacto_esperado`", self.corrido)
+
+    def test_la_regla_9_declara_que_mira_un_solo_campo(self):
+        self.assertIn("Se mira **sólo** el `procedimiento`", self.corrido)
 
 
 class PromptDeCorreccion(unittest.TestCase):

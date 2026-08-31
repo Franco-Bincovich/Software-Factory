@@ -190,7 +190,7 @@ def _valor_y_origen(clave):
 # número). El patrón tiene que identificar la afirmación sin ambigüedad dentro
 # de su archivo; si deja de encontrarse, el guardián lo dice.
 AFIRMACIONES = (
-    # --- las ocho reglas de T7 --------------------------------------------
+    # --- las nueve reglas de T7 -------------------------------------------
     ("reglas_t7", "03 - Agent Framework/Verification.md",
      r"sus <N> reglas de validez"),
     ("reglas_t7", "03 - Agent Framework/Requirement Agent.md",

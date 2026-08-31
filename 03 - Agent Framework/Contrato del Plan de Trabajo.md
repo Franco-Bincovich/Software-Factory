@@ -189,12 +189,14 @@ cerrado, y por lo tanto tampoco queda inmutable.
 4. Toda unidad declara su rastreo al pedido.
 5. Ninguna unidad cae dentro del alcance excluido declarado.
 
-Tres reglas adicionales propias de este contrato:
+Cuatro reglas adicionales propias de este contrato:
 
 6. El plan no supera diez unidades de trabajo. Superarlo no es un error del
    agente: es señal de que el pedido era demasiado grande, y se escala.
 7. No hay ciclos en el grafo de dependencias.
 8. El plan no compromete un lenguaje que la Fábrica no sabe producir.
+9. Ningún procedimiento delega la comprobación en un ejecutor que del lado de
+   acá de la frontera no existe.
 
 **La octava es de ADR-020 y merece decirse entera.** Un plan que pide Python es
 un plan que el Developer no puede cumplir, y no por falta de capacidad: el
@@ -216,6 +218,44 @@ pedido.
 Se comprueba contra una lista cerrada de lenguajes ajenos, declarada y no
 inferida. Una regla que intentara *adivinar* el lenguaje de un plan se
 equivocaría en silencio, que es de lo que veníamos.
+
+**La novena es de ADR-021 y también.** Quien comprueba un criterio es el QA
+Agent, y lo hace dentro de la frontera de ADR-016: `node -e`, sin red, sin
+instalar nada. Un procedimiento que dice «correr el comando de pruebas del
+proyecto y verificar que el reporte indique cero fallos» no tiene ningún caso
+posible: no hay comando que correr ni reporte que leer. El criterio no queda
+mal verificado, queda sin verificar, y el software sale por la puerta con esa
+parte sin comprobar. **Siete de los ocho planes del registro tenían al menos
+uno**, así que no era un desliz sino la forma por defecto de escribirlos.
+
+Un procedimiento válido dice **qué se invoca y qué valor se espera** — «correr
+el validador sobre un registro con el campo legajo vacío y leer la lista de
+reglas incumplidas»—. No es un estilo nuevo: 22 de los 29 criterios del registro
+ya estaban escritos así.
+
+**Se mira `procedimiento` y ningún otro campo.** Es la parte que alguien va a
+querer "completar" extendiéndola a `artefacto_esperado`, y no se extiende.
+`artefacto_esperado` describe qué se produce, y una unidad puede tener que
+entregar legítimamente un archivo de pruebas; prohibir la palabra ahí sería
+prohibirle a la Fábrica producir tests. `procedimiento` describe cómo se
+comprueba, y el que comprueba está atado a la frontera. En una misma unidad,
+«entregar `pruebas.js` con al menos dos casos» es un artefacto impecable y
+«correr la suite y ver que dé cero fallos» es un procedimiento imposible: una
+regla que mirara los dos campos rechazaría la unidad entera por la mitad que
+estaba bien. Es la diferencia con la regla 8, que sí mira varios campos: allá el
+lenguaje ajeno contamina donde aparezca, porque el Developer no lo sabe producir
+en ninguna parte. Acá el problema no es la herramienta, es quién tendría que
+correrla.
+
+**La regla es léxica y hereda el límite de serlo.** La regla 8 prohibió nombrar
+`pytest` y el defecto sobrevivió como perífrasis: de los siete criterios que la
+regla 9 corta, cinco no nombran ninguna herramienta. Por eso el vocabulario de
+la 9 son perífrasis —`runner`, `comando de ejecución de pruebas`, `suite de
+pruebas`— más las herramientas del propio JavaScript, y por eso la regla no va
+sola: el prompt del [[Requirement Agent]] enseña la forma correcta con el
+contraejemplo explícito. Un Requirement que escriba «se ejecuta el archivo de
+verificación del proyecto» la esquiva igual. La regla es la mitad mecánica de
+una defensa de dos mitades.
 
 ---
 

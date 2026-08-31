@@ -382,6 +382,71 @@ class SupuestosDeLaEntrega(ConPrompt):
         self.assertIn("evaluándose a sí mismo con tu firma", self.mensaje)
 
 
+# --- 4e — la salida de emergencia --------------------------------------------
+
+
+class CriterioSinCasoPosible(ConPrompt):
+    """Que QA pueda nombrar el callejón en vez de quemar el techo contra él.
+
+    Dos veces seguidas QA murió en 8.000 tokens de salida sin producir un caso,
+    contra los criterios de una unidad que pedía escribir tests. La salida ya
+    existía —"dejalo sin caso"— pero enumeraba tres formas que no incluían la
+    suya, y la regla que cierra la puerta ("Sin instalar nada") vivía en otra
+    sección, sin nada que llevara de una a la otra.
+
+    Las frases se buscan contra `self.corrido`, el prompt con los saltos de
+    línea colapsados: el texto viene ajustado a ochenta columnas y una frase que
+    cruza un corte no se encuentra en el original.
+    """
+
+    def setUp(self):
+        super(CriterioSinCasoPosible, self).setUp()
+        self.corrido = " ".join(self.sistema.split())
+
+    def test_la_frontera_manda_al_limite(self):
+        # El puente de ida: quien está leyendo las restricciones tiene que
+        # enterarse ahí mismo de que hay una salida, y dónde está.
+        self.assertIn("decide qué criterios tienen caso posible", self.corrido)
+        self.assertIn("El límite de lo que podés exigir", self.corrido)
+
+    def test_el_limite_manda_a_la_frontera(self):
+        # El puente de vuelta, citando el título de la sección tal como se
+        # imprime, que es lo único con lo que el modelo puede navegar.
+        self.assertIn("Dónde y cómo se ejecuta", self.corrido)
+        self.assertIn("no hay red y no se instala nada", self.corrido)
+
+    def test_nombra_la_herramienta_que_la_frontera_no_da(self):
+        self.assertIn("nombra una herramienta que la frontera no te da", self.corrido)
+        self.assertIn("el comando de pruebas del proyecto", self.corrido)
+
+    def test_prohibe_traducir_el_criterio_a_un_caso_propio(self):
+        # La salida que el modelo toma solo si no le cierran ésta: convertir
+        # "corré la suite" en "llamo yo a la función", que es la segunda forma
+        # de quedarse corto con otro nombre.
+        self.assertIn("**No lo traduzcas**", self.corrido)
+
+    def test_nombra_el_callejon_de_los_tests_del_developer(self):
+        # El que el CEO pidió: el criterio pide correr los tests del productor,
+        # y el propio prompt ya los declaró sin valor probatorio. Que se puedan
+        # ejecutar es justamente lo que hace que el callejón no se vea.
+        self.assertIn("pide correr los tests que entregó el Developer", self.corrido)
+        self.assertIn("no lo vuelve verificable", self.corrido)
+
+    def test_la_regla_que_los_desautoriza_va_antes_que_el_callejon(self):
+        # El callejón dice "la regla de arriba". Si alguien reordena la sección
+        # la referencia queda apuntando al vacío y el argumento se corta.
+        desautoriza = self.corrido.index(
+            "No cuentes los tests que entregó el Developer como evidencia"
+        )
+        callejon = self.corrido.index("pide correr los tests que entregó el Developer")
+        self.assertLess(desautoriza, callejon)
+
+    def test_la_salida_no_se_presenta_como_un_fracaso_del_agente(self):
+        # Un agente que lee "no pude" antes que "no se podía" vuelve a intentar,
+        # y volver a intentar es exactamente lo que quemó el techo.
+        self.assertIn("Es la salida correcta y no un fracaso tuyo", self.corrido)
+
+
 # --- 5 — parseo --------------------------------------------------------------
 
 

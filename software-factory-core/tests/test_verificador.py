@@ -15,6 +15,7 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 from verificador import (  # noqa: E402
     EXTENSIONES_AJENAS,
+    HERRAMIENTAS_SIN_FRONTERA,
     LENGUAJE_DE_LA_FABRICA,
     TERMINOS_AJENOS,
     verificar,
@@ -96,6 +97,16 @@ class DefectoSembrado(unittest.TestCase):
         (proc,) = [i for i in r["incumplimientos"] if "pytest" in i["detalle"] and i["unidad"]]
         self.assertEqual((proc["unidad"], proc["criterio"]), ("U2", 0))
 
+    def test_r9_procedimiento_que_delega_en_un_ejecutor(self):
+        r = self._comprobar("plan-r9.json", 9)
+        detalles = [i["detalle"] for i in r["incumplimientos"]]
+        # Las dos maneras: la perífrasis sola y la herramienta nombrada.
+        self.assertTrue(any("'runner'" in d for d in detalles))
+        self.assertTrue(any("'npm test'" in d for d in detalles))
+        # Y localiza en el criterio, no en la unidad.
+        (runner,) = [i for i in r["incumplimientos"] if "'runner'" in i["detalle"]]
+        self.assertEqual((runner["unidad"], runner["criterio"]), ("U2", 0))
+
 
 class Regla8(unittest.TestCase):
     """El vocabulario es cerrado y declarado, y dos campos quedan afuera."""
@@ -141,6 +152,100 @@ class Regla8(unittest.TestCase):
             self.assertNotIn(palabra, TERMINOS_AJENOS)
         for ext in EXTENSIONES_AJENAS:
             self.assertTrue(ext.startswith("."), ext)
+
+
+class Regla9(unittest.TestCase):
+    """Mira `procedimiento` y ningún otro campo, y por qué eso es lo correcto."""
+
+    def _plan(self):
+        return json.loads((FIXTURES / "plan-ok.json").read_text(encoding="utf-8"))
+
+    def _reglas(self, plan):
+        return reglas_disparadas(verificar(plan, PEDIDO))
+
+    def test_producir_pruebas_es_un_artefacto_legitimo(self):
+        """La distinción que sostiene la regla, y la que van a querer borrar.
+
+        Extenderla a `artefacto_esperado` le prohibiría a la Fábrica producir
+        tests, que es lo contrario de lo que se quiere. El fixture `plan-r9`
+        ya lleva "suite de pruebas" en el artefacto de U3 sin disparar nada;
+        esto lo dice sobre el plan limpio, para que se lea como decisión.
+        """
+        plan = self._plan()
+        plan["unidades"][0]["artefacto_esperado"] = (
+            "Módulo lector más una suite de pruebas con un caso por tipo de fila."
+        )
+        plan["unidades"][0]["enunciado"] = "Escribir el lector y su suite de pruebas."
+        self.assertNotIn(9, self._reglas(plan))
+
+    def test_la_misma_unidad_cae_solo_por_el_procedimiento(self):
+        """Artefacto impecable y procedimiento imposible conviven en una unidad.
+
+        Es el caso que obliga a mirar un solo campo: si la regla mirara los dos,
+        rechazaría esta unidad dos veces, y una de las dos veces sin razón.
+        """
+        plan = self._plan()
+        unidad = plan["unidades"][0]
+        unidad["artefacto_esperado"] = "Módulo lector y su suite de pruebas."
+        unidad["criterios"][0]["procedimiento"] = (
+            "Correr el comando de ejecución de pruebas y ver que dé cero fallos."
+        )
+        fallos = [i for i in verificar(plan, PEDIDO)["incumplimientos"] if i["regla"] == 9]
+        self.assertEqual(len(fallos), 1)
+        self.assertEqual(fallos[0]["criterio"], 0)
+
+    def test_la_perifrasis_se_corta_sin_que_nombre_herramienta(self):
+        """Los cinco de siete del registro que no nombran ninguna.
+
+        La regla 8 castiga decir `pytest`, así que el nombre propio desaparece
+        y queda "el comando de ejecución de pruebas del proyecto", que dice lo
+        mismo. Una lista de comandos sola no ve nada de esto.
+        """
+        plan = self._plan()
+        plan["unidades"][1]["criterios"][0]["procedimiento"] = (
+            "Correr el comando de ejecución de pruebas del proyecto y leer el resultado."
+        )
+        self.assertIn(9, self._reglas(plan))
+
+    def test_el_detalle_dice_por_que_y_no_solo_que_no(self):
+        """Un rechazo que no explica manda al Requirement a adivinar de nuevo."""
+        plan = self._plan()
+        plan["unidades"][1]["criterios"][0]["procedimiento"] = "Correr la suite de pruebas."
+        fallos = [i for i in verificar(plan, PEDIDO)["incumplimientos"] if i["regla"] == 9]
+        self.assertTrue(fallos)
+        for fallo in fallos:
+            self.assertIn("node -e", fallo["detalle"])
+            self.assertIn("qué se invoca y qué valor se espera", fallo["detalle"])
+
+    def test_ejecutar_la_funcion_y_leer_lo_que_devuelve_no_se_corta(self):
+        """El procedimiento correcto, que es lo que la regla quiere dejar pasar.
+
+        Los cuatro criterios de `plan-ok` son de esta forma y ninguno cae. Si
+        esto se rompe, la regla dejó de distinguir y hay que apagarla.
+        """
+        plan = self._plan()
+        plan["unidades"][0]["criterios"][0]["procedimiento"] = (
+            "Invocar el lector con fixtures/altas-50.csv e imprimir la cantidad "
+            "de registros devueltos; se espera 50."
+        )
+        self.assertNotIn(9, self._reglas(plan))
+
+    def test_el_vocabulario_no_incluye_palabras_del_castellano(self):
+        """Mismo cuidado que la regla 8: un falso positivo cuesta una iteración.
+
+        `test`, `prueba` y `correr` quedan afuera a propósito: son palabras que
+        un procedimiento legítimo usa. Lo que se prohíbe es la invocación.
+        """
+        for palabra in ("test", "prueba", "pruebas", "correr", "comando", "reporte"):
+            self.assertNotIn(palabra, HERRAMIENTAS_SIN_FRONTERA)
+
+    def test_node_no_esta_prohibido(self):
+        """Es el intérprete de la frontera: nombrarlo no es delegar en nadie."""
+        plan = self._plan()
+        plan["unidades"][0]["criterios"][0]["procedimiento"] = (
+            "Ejecutar con node la función del lector y contar los registros."
+        )
+        self.assertNotIn(9, self._reglas(plan))
 
 
 class FormaDeLaSalida(unittest.TestCase):

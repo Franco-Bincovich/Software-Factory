@@ -108,7 +108,12 @@ impone el sistema y no se negocian:
   rutas relativas dentro del depósito. Un nombre de paquete hace fallar el caso.
 
 El directorio de trabajo de la expresión es el depósito, así que
-`require("./logica.js")` resuelve contra los archivos de la entrega.\
+`require("./logica.js")` resuelve contra los archivos de la entrega.
+
+Esta frontera no es sólo la forma de escribir la expresión: **decide qué
+criterios tienen caso posible y cuáles no**. Un criterio cuyo procedimiento pida
+algo de afuera de acá no se traduce ni se aproxima, se deja sin caso. Cómo
+hacerlo está en "El límite de lo que podés exigir", al final.\
 """
 
 FORMA_DEL_CASO = """\
@@ -201,16 +206,39 @@ pidiendo a vos en vez de programarlo. Si un criterio te queda sin ningún caso q
 lo instancie de verdad, dejalo sin caso: "no verificable mecánicamente" es un
 resultado, y un veredicto falso no.
 
-**Si un criterio no se puede comprobar ejecutando** —porque su procedimiento
-nombra abrir un HTML y mirarlo, o un intérprete que no es Node, o algo que no
-tiene salida observable— **no le pongas ningún caso.** No lo aproximes y no lo
-des por cumplido: la plataforma lo declara "no verificable mecánicamente" y
-escala a una persona, que es lo correcto. Inventar un caso que "más o menos"
-lo cubre convierte una pregunta abierta en un veredicto falso.
-
 **No cuentes los tests que entregó el Developer como evidencia.** Podés
 ejecutarlos, pero que pasen no comprueba nada: es el productor declarando que su
-producto está bien. Tus casos son tuyos.\
+producto está bien. Tus casos son tuyos.
+
+## Cuando el criterio no tiene caso posible
+
+**Si un criterio no se puede comprobar ejecutando, no le pongas ningún caso.** No
+lo aproximes y no lo des por cumplido: la plataforma lo declara "no verificable
+mecánicamente" y escala a una persona, que es lo correcto. Inventar un caso que
+"más o menos" lo cubre convierte una pregunta abierta en un veredicto falso.
+
+Un criterio queda sin caso cuando pasa alguna de estas cosas:
+
+- **Su procedimiento no tiene salida observable**: nombra abrir un HTML y
+  mirarlo, revisar a ojo, o cualquier cosa cuyo resultado no se imprima.
+- **Su procedimiento nombra un intérprete que no es Node.**
+- **Su procedimiento nombra una herramienta que la frontera no te da**: el
+  comando de pruebas del proyecto, un runner, un gestor de paquetes, un linter,
+  un compilador, cualquier cosa que haya que instalar o bajar. Volvé a leer
+  "Dónde y cómo se ejecuta": no hay red y no se instala nada. Un criterio que
+  dice "el reporte de la suite no indica fallos" no tiene caso posible, porque
+  del lado de acá de la frontera no hay suite que produzca reporte. **No lo
+  traduzcas** a "entonces lo compruebo yo llamando a la función": eso es escribir
+  tu propio caso y colgarlo de un criterio que pedía otra cosa, que es la segunda
+  forma de quedarse corto.
+- **Su procedimiento pide correr los tests que entregó el Developer.** Éste es el
+  callejón más fácil de no ver, porque los tests están ahí, en el depósito, y
+  corren. Igual no hay caso legal: la regla de arriba dice que no valen como
+  evidencia, así que un caso construido sobre ellos no comprueba nada aunque
+  pase. Que se pueda ejecutar no lo vuelve verificable.
+
+Es la salida correcta y no un fracaso tuyo: el criterio que llega así llegó mal
+escrito, y vos no lo podés arreglar del lado de acá.\
 """
 
 FORMA_DE_RESPUESTA = """\

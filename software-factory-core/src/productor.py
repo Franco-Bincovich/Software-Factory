@@ -98,10 +98,10 @@ class PlanNoParseable(ValueError):
 # --- prompt -----------------------------------------------------------------
 
 REGLAS_T7 = """\
-El verificador estructural (T7) evalúa ocho reglas sobre el plan. Un plan que
+El verificador estructural (T7) evalúa nueve reglas sobre el plan. Un plan que
 incumple cualquiera de ellas se rechaza y hay que corregirlo.
 
-Antes de las ocho comprueba el esquema JSON. Es una compuerta, no una de ellas:
+Antes de las nueve comprueba el esquema JSON. Es una compuerta, no una de ellas:
 si el plan no valida, el verificador devuelve `regla 0` y no evalúa nada más.
 
 Regla 1 — Toda unidad de trabajo declara al menos un Acceptance Criterion.
@@ -139,7 +139,17 @@ criterio. **No declares el lenguaje como supuesto**: si el pedido no lo dice, no
 es que quede a criterio de nadie, es que ya está decidido.
 
 `fuera_de_alcance` y `alcance_excluido` no se miran: ahí nombrar un lenguaje es
-excluirlo, no comprometerse a él.\
+excluirlo, no comprometerse a él.
+
+Regla 9 — **El `procedimiento` no delega la comprobación en nadie.** Quien
+comprueba tus criterios ejecuta una expresión aislada, sin red y sin instalar
+nada: no hay comando de pruebas del proyecto, no hay runner, no hay gestor de
+paquetes y no hay reporte que leer. Un `procedimiento` que nombre alguno de
+ellos —o lo diga con otras palabras— se rechaza.
+
+Se mira **sólo** el `procedimiento`. `artefacto_esperado` puede pedir un archivo
+de pruebas sin problema: ahí estás diciendo qué se produce, no cómo se
+comprueba.\
 """.format(
     lenguaje=LENGUAJE_DE_LA_FABRICA,
     ajenos=", ".join(TERMINOS_AJENOS),
@@ -194,6 +204,38 @@ términos comprobables. `procedimiento` dice cómo se hace la comprobación, con
 el detalle suficiente para que otra persona la repita. Un criterio que no se
 puede comprobar sin interpretar no cumple la regla 2 aunque tenga las tres
 partes llenas.
+
+## El `procedimiento` describe una ejecución, no una delegación
+
+**Un `procedimiento` bien escrito dice qué se invoca, con qué entrada, y qué
+valor se mira.** Nada más y nada menos. Quien lo ejecuta corre una expresión
+suelta y lee lo que devuelve.
+
+Así:
+
+- «Correr el validador sobre un registro con el campo legajo vacío y leer la
+  lista de reglas incumplidas.»
+- «Correr el lector sobre un CSV de 50 filas con encabezado y contar los
+  registros devueltos.»
+
+Así **no**:
+
+- «Correr el comando de ejecución de pruebas del proyecto sobre el archivo de
+  pruebas y verificar que el reporte final indique cero fallos.»
+- «Ejecutar la suite y confirmar que termina sin fallos.»
+
+Los dos últimos delegan la comprobación en algo que del otro lado no existe: no
+hay comando que correr ni reporte que leer, así que el criterio queda **sin
+verificar**, no verificado a medias. Y no alcanza con sacarle el nombre a la
+herramienta: «se ejecuta el archivo de verificación del proyecto y se lee su
+salida» es la misma delegación con otras palabras, y también está mal. Lo que
+importa no es qué palabra usaste, es si el criterio nombra una invocación
+concreta con un valor esperado concreto.
+
+**Que la unidad entregue pruebas no cambia nada de esto.** Podés pedir un
+archivo de pruebas en `artefacto_esperado`; lo que no podés es escribir un
+criterio cuyo `procedimiento` sea correrlo. Se comprueba la función, no la
+suite que la prueba.
 
 # La ruta del artefacto es una decisión, no una ilustración
 

@@ -39,7 +39,7 @@ CAMPOS = (
     (4, "Salida", "Un Plan de Trabajo depositado en el Operational State."),
     (5, "Herramientas autorizadas", "Lista cerrada de dos. Denegación por defecto."),
     (6, "Alcance de decisión", "Decide el método. Propone el plan. Tiene prohibido aprobarlo."),
-    (7, "Criterio de terminación", "El plan pasa las ocho reglas y su Gate de salida."),
+    (7, "Criterio de terminación", "El plan pasa las nueve reglas y su Gate de salida."),
     (
         8,
         "Presupuesto",

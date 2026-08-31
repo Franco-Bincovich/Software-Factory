@@ -118,9 +118,17 @@ válido y en 1 si no lo es.
 }
 ```
 
-Evalúa las ocho reglas siempre y devuelve la lista completa; no corta en el
+Evalúa las nueve reglas siempre y devuelve la lista completa; no corta en el
 primer incumplimiento. Si el plan no valida contra el esquema devuelve regla `0`
 y no evalúa el resto.
+
+La **regla 9** mira sólo `procedimiento` y rechaza el criterio que delega la
+comprobación en un ejecutor que la frontera de ADR-016 no da —"correr el comando
+de ejecución de pruebas del proyecto y ver que el reporte indique cero fallos"—.
+QA corre cada caso con `node -e` sin red y sin instalar nada: de ese lado no hay
+runner ni reporte. `artefacto_esperado` queda afuera a propósito: producir una
+suite de pruebas es un entregable legítimo, y lo que no se puede es *verificar*
+corriéndola.
 
 ## Verificador de Entregas del Developer
 
@@ -658,20 +666,20 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-496 tests, uno por cada fila de los criterios de
+516 tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
 | Archivo | Tests | Cubre |
 |---|---|---|
-| `test_verificador.py` | 15 | los siete fixtures de T7, cinco sobre el vocabulario cerrado de la regla 8 y tres sobre la forma de la salida |
+| `test_verificador.py` | 23 | los ocho fixtures de T7, cinco sobre el vocabulario cerrado de la regla 8, siete sobre la regla 9 y por qué mira un solo campo, y tres sobre la forma de la salida |
 | `test_intake.py` | 9 | el criterio de aceptación de T8 |
 | `test_agent_loader.py` | 10 | el criterio de aceptación de T10 |
 | `test_gates.py` | 11 | el criterio de aceptación de T11 |
 | `test_presupuesto.py` | 16 | el criterio de aceptación de T12, los dos formatos del consumo y el techo medido con el caché cobrado |
 | `test_operational_state.py` | 8 | el criterio de aceptación de T13 |
 | `test_grafo.py` | 20 | el criterio de aceptación de T14 y el registro del modo |
-| `test_productor.py` | 29 | el criterio de aceptación de T15, el desglose del consumo y la tabla de precios verificada con sus cuatro contadores |
+| `test_productor.py` | 34 | el criterio de aceptación de T15, el desglose del consumo, la tabla de precios verificada con sus cuatro contadores y lo que el prompt enseña sobre la forma del procedimiento |
 | `test_correr.py` | 14 | el modo de producción a través de la reanudación y la precedencia entre entorno y `.env` |
 | `test_verificador_entrega.py` | 50 | un defecto sembrado por regla sobre la entrega limpia, las tres reglas que miran el inventario del espacio y que C4 lea la ruta del campo y no de la prosa |
 | `test_cadena.py` | 77 | la cadena completa, el reintento, la detención, los dos techos de la cadena, el depósito de artefactos, el enganche de QA, y qué hace cada nodo con una respuesta ilegible y dónde queda guardado su texto |
@@ -682,7 +690,7 @@ después y las piezas de V0.2:
 | `test_conteos_declarados.py` | 6 | que ninguna afirmación del repo cite un número que la máquina ya no tiene, ni un lenguaje que el Contrato del Developer ya no manda |
 | `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
 | `test_verificacion_sustantiva.py` | 40 | el anclaje, el veredicto por criterio, el invariante de la superficie de rechazo contra salidas fabricadas y el Control 4: que la evidencia dependa del artefacto |
-| `test_productor_qa.py` | 42 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, y la Agent Definition del QA Agent |
+| `test_productor_qa.py` | 49 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, la salida para el criterio que no tiene caso posible, y la Agent Definition del QA Agent |
 | `test_qa_contra_defectos.py` | 16 | QA contra dos entregas reales del registro: acepta las correctas y rechaza cuatro defectos sembrados nombrando el criterio que cada uno rompió |
 | `test_entrega_incremental.py` | 16 | ADR-019: que la parte N no vuelva a depositar lo que dejó la N-1, que la suite de las partes firmadas falle ruidosamente, y que pisar lo firmado se rechace y escale |
 

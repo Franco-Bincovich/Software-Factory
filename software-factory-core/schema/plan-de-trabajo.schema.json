@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://software-factory/schema/plan-de-trabajo.schema.json",
   "title": "Plan de Trabajo",
-  "description": "Forma canonica del Plan de Trabajo segun T7. El esquema valida forma y tipos. Las restricciones de contenido que cubren las ocho reglas no se declaran aca: si el esquema las rechazara, el verificador devolveria regla 0 y no llegaria a evaluarlas.",
+  "description": "Forma canonica del Plan de Trabajo segun T7. El esquema valida forma y tipos. Las restricciones de contenido que cubren las nueve reglas no se declaran aca: si el esquema las rechazara, el verificador devolveria regla 0 y no llegaria a evaluarlas.",
   "type": "object",
   "additionalProperties": false,
   "required": [
