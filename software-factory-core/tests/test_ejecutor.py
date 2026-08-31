@@ -360,15 +360,6 @@ class EntradaQueNoDeberiaHaberLlegado(BaseEjecutor):
 class NegativaSinFrontera(unittest.TestCase):
     """Sin frontera de kernel no se ejecuta, y el mensaje dice qué faltó."""
 
-    def test_en_un_sistema_sin_frontera_escrita_se_niega(self):
-        with self.assertRaises(SinFrontera) as caso:
-            ejecutor.frontera_de_red(sistema="Linux")
-        mensaje = str(caso.exception)
-        self.assertIn("Frontera buscada", mensaje)
-        self.assertIn("Por qué no se consiguió", mensaje)
-        self.assertIn("Linux", mensaje)
-        self.assertIn("unshare --net", mensaje, "no dice cuál sería la frontera de ese sistema")
-
     def test_en_macos_sin_sandbox_exec_se_niega_y_lo_nombra(self):
         with self.assertRaises(SinFrontera) as caso:
             ejecutor.frontera_de_red(sistema="Darwin", buscar=lambda _: None)
@@ -376,11 +367,19 @@ class NegativaSinFrontera(unittest.TestCase):
         self.assertIn("sandbox-exec", mensaje)
         self.assertIn("no hay `sandbox-exec` en el PATH", mensaje)
 
+    def test_en_un_sistema_sin_frontera_escrita_se_niega(self):
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(sistema="Windows")
+        mensaje = str(caso.exception)
+        self.assertIn("Frontera buscada", mensaje)
+        self.assertIn("Por qué no se consiguió", mensaje)
+        self.assertIn("Windows", mensaje)
+
     def test_el_mensaje_dice_por_que_no_se_degrada_al_bloqueo_en_proceso(self):
         """Sin esto, el siguiente que lo lea lo "arregla" bloqueando en proceso."""
         for sistema in ("Linux", "Windows"):
             with self.assertRaises(SinFrontera) as caso:
-                ejecutor.frontera_de_red(sistema=sistema)
+                ejecutor.frontera_de_red(sistema=sistema, buscar=lambda _: None)
             self.assertIn("evadible", str(caso.exception))
 
     def test_en_macos_con_sandbox_exec_devuelve_el_prefijo_con_el_perfil(self):
@@ -395,6 +394,169 @@ class NegativaSinFrontera(unittest.TestCase):
         with self.assertRaises(SinFrontera) as caso:
             ejecutor._binario_de_node(buscar=lambda _: None)
         self.assertIn("node", str(caso.exception))
+
+
+# --- 7 — la sonda de Linux --------------------------------------------------
+
+
+#: Las tres observaciones que la sonda puede devolver, como las devuelve
+#: `observar_red`: `(interfaces, salida, crudo)`.
+AFUERA = (2, "TIMEOUT", "INTERFACES=2 SALIDA=TIMEOUT")
+AISLADO = (0, "ERROR:ENETUNREACH", "INTERFACES=0 SALIDA=ERROR:ENETUNREACH")
+#: El caso contradictorio: adentro no hay interfaces y la conexión sale igual.
+#: No debería poder pasar, y por eso mismo se comprueba: si pasa, lo que falla
+#: es la sonda, y aceptarla sería tomar por frontera algo que no lo es.
+SIN_AISLAR = (0, "CONECTO", "INTERFACES=0 SALIDA=CONECTO")
+NO_CORRIO = (None, None, "código 1 — unshare: unshare failed: Operation not permitted")
+
+
+def buscar_solo(*disponibles):
+    """Un `shutil.which` de mentira: sólo encuentra lo que se le nombra."""
+    return lambda nombre: "/usr/bin/%s" % nombre if nombre in disponibles else None
+
+
+def sonda(control, *respuestas):
+    """Un `observar_red` de mentira.
+
+    Sin prefijo devuelve `control`; con prefijo va devolviendo `respuestas` en
+    el orden en que se prueban los candidatos.
+    """
+    pendientes = list(respuestas)
+    return lambda prefijo: control if not prefijo else pendientes.pop(0)
+
+
+class SondaDeLinux(unittest.TestCase):
+    """En Linux la frontera se comprueba, no se deduce de encontrar el binario.
+
+    Esta rama se escribió sin poder correr Linux ni una vez, así que lo único
+    honesto que se puede afirmar hoy es cómo decide el módulo, no que el
+    espacio de nombres se cree. Lo segundo lo mide
+    `verificar_frontera_linux.py` en la máquina real.
+    """
+
+    def test_encontrar_unshare_no_alcanza_si_la_sonda_no_lo_confirma(self):
+        """El corazón de la rama: `which` no es prueba de nada en Linux."""
+        with self.assertRaises(SinFrontera):
+            ejecutor.frontera_de_red(
+                sistema="Linux",
+                buscar=buscar_solo("unshare"),
+                observar=sonda(AFUERA, NO_CORRIO, NO_CORRIO),
+            )
+
+    def test_cuando_la_sonda_confirma_devuelve_el_prefijo(self):
+        nombre, prefijo = ejecutor.frontera_de_red(
+            sistema="Linux",
+            buscar=buscar_solo("unshare"),
+            observar=sonda(AFUERA, AISLADO),
+        )
+        self.assertEqual(nombre, "unshare-netns")
+        self.assertEqual(prefijo, ["/usr/bin/unshare", "--user", "--map-current-user", "--net", "--"])
+
+    def test_si_el_primer_candidato_falla_prueba_el_siguiente(self):
+        """`--map-current-user` es de util-linux 2.38; en 22.04 hay que caer al otro."""
+        nombre, _ = ejecutor.frontera_de_red(
+            sistema="Linux",
+            buscar=buscar_solo("unshare"),
+            observar=sonda(AFUERA, NO_CORRIO, AISLADO),
+        )
+        self.assertEqual(nombre, "unshare-netns-root")
+
+    def test_no_acepta_una_frontera_que_igual_deja_conectar(self):
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(
+                sistema="Linux",
+                buscar=buscar_solo("bwrap"),
+                observar=sonda(AFUERA, SIN_AISLAR),
+            )
+        self.assertIn("la conexión saliente igual se estableció", str(caso.exception))
+
+    def test_no_acepta_una_frontera_donde_siguen_viendose_interfaces(self):
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(
+                sistema="Linux",
+                buscar=buscar_solo("bwrap"),
+                observar=sonda(AFUERA, (2, "TIMEOUT", "INTERFACES=2 SALIDA=TIMEOUT")),
+            )
+        self.assertIn("No aisló nada", str(caso.exception))
+
+    def test_en_una_maquina_sin_red_no_afirma_la_frontera(self):
+        """El control de la sonda, que es el que evita el falso verde.
+
+        Sin él, una máquina con el cable desenchufado haría pasar cualquier
+        frontera —incluso una que no existe—, porque adentro y afuera se verían
+        igual.
+        """
+        desconectada = (0, "ERROR:ENETUNREACH", "INTERFACES=0 SALIDA=ERROR:ENETUNREACH")
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(
+                sistema="Linux",
+                buscar=buscar_solo("unshare"),
+                observar=sonda(desconectada, AISLADO, AISLADO),
+            )
+        self.assertIn("máquina desconectada", str(caso.exception))
+
+    def test_si_el_control_no_corre_tampoco_afirma_nada(self):
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(
+                sistema="Linux",
+                buscar=buscar_solo("unshare"),
+                observar=sonda(NO_CORRIO, AISLADO, AISLADO),
+            )
+        self.assertIn("no hay contra qué comparar", str(caso.exception))
+
+    def test_sin_candidatos_no_corre_ninguna_sonda(self):
+        """Ni la de control: no hay nada contra qué compararla."""
+        def explotar(_):
+            self.fail("corrió una sonda sin tener ningún candidato que probar")
+
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(
+                sistema="Linux", buscar=lambda _: None, observar=explotar
+            )
+        mensaje = str(caso.exception)
+        self.assertIn("no está `unshare` en el PATH", mensaje)
+        self.assertIn("no está `bwrap` en el PATH", mensaje)
+
+
+class ElMensajeDeLinuxAlcanzaParaArreglarlo(unittest.TestCase):
+    """Mañana en la mini PC, el mensaje tiene que bastar sin releer el módulo.
+
+    Que la sonda corrió, con qué candidato, y con qué murió. Un "no hay
+    frontera" a secas manda a reconstruir desde cero lo que la máquina ya
+    contestó.
+    """
+
+    def mensaje(self):
+        with self.assertRaises(SinFrontera) as caso:
+            ejecutor.frontera_de_red(
+                sistema="Linux",
+                buscar=buscar_solo("unshare"),
+                observar=sonda(AFUERA, NO_CORRIO, NO_CORRIO),
+            )
+        return str(caso.exception)
+
+    def test_dice_que_se_probo_y_con_que_murio(self):
+        mensaje = self.mensaje()
+        self.assertIn("Se probó cada candidato con una sonda real", mensaje)
+        self.assertIn("unshare-netns", mensaje, "no dice qué candidato se probó")
+        self.assertIn("Operation not permitted", mensaje, "no dice con qué murió")
+
+    def test_nombra_el_sysctl_de_apparmor_que_es_la_causa_mas_probable(self):
+        """Es el motivo número uno en un Ubuntu 24.04 de fábrica."""
+        self.assertIn("kernel.apparmor_restrict_unprivileged_userns", self.mensaje())
+
+    def test_deja_la_observacion_de_control_a_la_vista(self):
+        self.assertIn("INTERFACES=2", self.mensaje())
+
+    def test_avisa_que_nadie_vio_funcionar_esta_rama(self):
+        mensaje = self.mensaje()
+        self.assertIn(ejecutor.LINUX_ESCRITA_SIN_MEDIR, mensaje)
+        self.assertIn("nadie la vio funcionar", mensaje)
+
+    def test_manda_a_leer_por_que_seccomp_no_es_la_salida_obvia(self):
+        """Sin esto, el que lo lea mañana lo ve como lo que alguien no hizo."""
+        self.assertIn("seccomp", self.mensaje())
+        self.assertIn("descartado con motivo", self.mensaje())
 
 
 if __name__ == "__main__":

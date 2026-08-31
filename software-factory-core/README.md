@@ -666,7 +666,7 @@ ahora sería decidir por ella si gasta dinero.
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
-516 tests, uno por cada fila de los criterios de
+529 tests, uno por cada fila de los criterios de
 aceptación de las ocho tareas, más los que cubren lo que se fue arreglando
 después y las piezas de V0.2:
 
@@ -688,7 +688,7 @@ después y las piezas de V0.2:
 | `test_herencia.py` | 18 | heredar un plan verificado, el techo descontado y la reejecución |
 | `test_aislamiento_del_estado.py` | 5 | que la suite no escriba en el área de estado real |
 | `test_conteos_declarados.py` | 6 | que ninguna afirmación del repo cite un número que la máquina ya no tiene, ni un lenguaje que el Contrato del Developer ya no manda |
-| `test_ejecutor.py` | 28 | cada garantía de la frontera de ADR-016 probada intentando violarla, y la negativa a ejecutar sin frontera de kernel |
+| `test_ejecutor.py` | 41 | cada garantía de la frontera de ADR-016 probada intentando violarla, la negativa a ejecutar sin frontera de kernel, y la sonda de Linux: que encontrar `unshare` no alcanza, que una máquina sin red no hace pasar cualquier frontera, y que el mensaje del fallo alcanza para arreglarlo sin releer el módulo |
 | `test_verificacion_sustantiva.py` | 40 | el anclaje, el veredicto por criterio, el invariante de la superficie de rechazo contra salidas fabricadas y el Control 4: que la evidencia dependa del artefacto |
 | `test_productor_qa.py` | 49 | el productor de casos de prueba, con cliente falso, la derivación que el prompt le pide, los supuestos de la entrega llegando al mensaje, la salida para el criterio que no tiene caso posible, y la Agent Definition del QA Agent |
 | `test_qa_contra_defectos.py` | 16 | QA contra dos entregas reales del registro: acepta las correctas y rechaza cuatro defectos sembrados nombrando el criterio que cada uno rompió |

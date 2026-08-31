@@ -29,7 +29,8 @@ ejecutado puede ignorarlo; está medido y hay un test que lo prueba. Un corte po
 tiempo que termine en `SIGTERM` es una sugerencia, no un límite.
 
 **Red — frontera del kernel, o no se ejecuta.** Ver abajo, que es lo que hay que
-leer antes de tocar este módulo.
+leer antes de tocar este módulo. En macOS está medida; en Linux está escrita y
+**nadie la vio funcionar**, así que se prueba sola antes de usarse.
 
 ## Por qué la red no se bloquea dentro del proceso
 
@@ -58,6 +59,57 @@ garantía que la máquina no da, en el borde de seguridad y sin que se note.
 
 Si alguien viene a simplificar esto: la simplificación ya se probó, el agujero
 tiene nombre, y está cubierto por un test.
+
+## Por qué en Linux la frontera se prueba en vez de darse por buena
+
+En macOS alcanza con encontrar `sandbox-exec` en el PATH **porque la frontera se
+midió**: los tres tests de red corrieron contra ella y fallaron en abrir la
+conexión. Encontrar el binario es entonces un proxy legítimo de una garantía ya
+comprobada.
+
+En Linux no hay tal medición. La rama se escribió el **2026-08-31** en una
+máquina macOS sin Docker ni VM, donde Linux no se puede correr **ni una vez**.
+Encontrar `unshare` en el PATH no probaría nada: `unshare --user` falla con
+`EPERM` en cualquier Ubuntu 24.04 de fábrica, porque
+`kernel.apparmor_restrict_unprivileged_userns` viene en 1. Un `which` que
+devolviera el prefijo dejaría al ejecutor afirmando una garantía que la máquina
+probablemente no da — el defecto exacto que este módulo existe para no cometer.
+
+Por eso el camino de Linux **corre una sonda y sólo devuelve el prefijo si la
+sonda demuestra que la red no está**. La demostración es de la máquina real, en
+el momento de usarse, y no de quien escribió esto. Si mañana AppArmor bloquea el
+espacio de nombres, `SinFrontera` lo dice con el error del kernel adentro.
+
+La sonda lleva su propio control, y eso no es exceso: **una máquina sin red haría
+pasar cualquier frontera, incluso una que no existe.** Así que se observa dos
+veces —con el prefijo y sin él— y sólo se acepta la frontera si la diferencia
+entre las dos observaciones es la frontera. Sin control, un cable desenchufado se
+leería como aislamiento conseguido.
+
+## El plan de contingencia, y por qué no es la opción obvia
+
+Si en la máquina real ni `unshare` ni `bwrap` consiguen el espacio de nombres,
+queda un tercer camino: **un filtro `seccomp` que deniegue `socket(AF_INET, …)`**,
+instalado con `PR_SET_NO_NEW_PRIVS` entre el `fork` y el `exec`. No necesita
+privilegios ni espacios de nombres, así que es inmune a lo que rompe a los otros
+dos.
+
+**Está descartado a propósito, y el motivo no es la pereza.** Un espacio de
+nombres de red vacío corta el acceso **por ausencia**: adentro no hay interfaz ni
+ruta, así que no hay adónde salir y nadie tuvo que enumerar por dónde no. Un
+filtro de syscalls corta **por lista**, y esa lista la escribe una persona:
+`socket`, `socketcall` en 32 bits, y después la decisión sobre `AF_NETLINK` y
+`AF_PACKET`, y después lo que no se nos ocurrió.
+
+Eso lo pone en **la misma familia que el bloqueo en proceso** que este módulo
+rechaza más arriba. Es mejor —lo hace cumplir el kernel y `NO_NEW_PRIVS` lo
+vuelve irrevocable, así que el código contenido no puede desarmarlo—, pero
+comparte la propiedad que importa: su alcance sigue siendo "todos los caminos que
+quien lo escribió supo enumerar". El namespace no tiene alcance, tiene vacío.
+
+Se agrega **sólo** si los dos primeros fallan en la máquina real, y con esa
+diferencia anotada donde se lo agregue. Lo que no corresponde es adoptarlo por
+comodidad: hoy no ahorra nada, y cambia una frontera sin lista por una con lista.
 """
 
 import os
@@ -85,6 +137,59 @@ PERFIL_SIN_RED = "(version 1)(allow default)(deny network*)"
 # tiene cargada, porque `correr.py` hace `load_dotenv`. Se pasa un entorno mínimo
 # en vez de heredar.
 ENTORNO_MINIMO = {"PATH": "/usr/bin:/bin", "NODE_ENV": "test"}
+
+#: El día que se escribió la rama de Linux sin poder correrla. Va en el mensaje
+#: de `SinFrontera` para que quien lo lea sepa cuán vieja es la suposición.
+LINUX_ESCRITA_SIN_MEDIR = "2026-08-31"
+
+#: Los candidatos de Linux, en orden de preferencia. Cada uno es
+#: `(nombre, binario, argumentos)`.
+#:
+#: `unshare` va primero porque es de util-linux, paquete esencial: es el único
+#: que no puede faltar en un Ubuntu recién instalado. `bwrap` va después porque
+#: hay que instalarlo, no porque sea peor.
+#:
+#: Las dos variantes de `unshare` son la misma frontera con distinto mapeo de
+#: usuario. `--map-current-user` es de util-linux 2.38; Ubuntu 24.04 trae 2.39 y
+#: le sirve, Ubuntu 22.04 trae 2.37 y no. **Sin ninguno de los dos mapeos el UID
+#: de adentro cae a `nobody` y Node no puede leer el directorio de la unidad**:
+#: la frontera andaría y la ejecución fallaría por otra cosa, que es peor que
+#: fallar limpio. Por eso no existe la variante pelada.
+CANDIDATOS_LINUX = (
+    ("unshare-netns", "unshare", ["--user", "--map-current-user", "--net", "--"]),
+    ("unshare-netns-root", "unshare", ["--user", "--map-root-user", "--net", "--"]),
+    ("bwrap-netns", "bwrap", ["--unshare-net", "--dev-bind", "/", "/", "--"]),
+)
+
+#: Lo que la sonda observa, y por qué son dos cosas y no una.
+#:
+#: `INTERFACES` cuenta las interfaces que no son loopback. Adentro de un espacio
+#: de nombres de red recién creado hay una sola, `lo`, y arranca caída: la cuenta
+#: da 0. Es la señal principal porque es **instantánea y no depende de que la
+#: máquina tenga internet**.
+#:
+#: `SALIDA` intenta una conexión a TEST-NET-1 (RFC 5737), que no se rutea a
+#: ninguna parte. Sin frontera el intento queda colgado hasta el `timeout`; con
+#: frontera el kernel contesta `ENETUNREACH` de inmediato, porque no hay ruta.
+#: La diferencia entre "tardó" y "no hay por dónde" es la que interesa.
+SONDA_JS = (
+    'const os=require("node:os");'
+    'const n=Object.values(os.networkInterfaces())'
+    '.filter(v=>(v||[]).some(a=>!a.internal)).length;'
+    'const fin=(r)=>{process.stdout.write("INTERFACES="+n+" SALIDA="+r);'
+    "process.exit(0);};"
+    'let s;try{s=require("node:net").connect(53,"192.0.2.1");}'
+    'catch(e){return fin("ERROR:"+(e.code||e.message));}'
+    "s.setTimeout(1500);"
+    's.on("connect",()=>{s.destroy();fin("CONECTO");});'
+    's.on("error",(e)=>{s.destroy();fin("ERROR:"+(e.code||e.message));});'
+    's.on("timeout",()=>{s.destroy();fin("TIMEOUT");});'
+)
+
+#: Techo de la sonda. Generoso contra el `setTimeout` de 1500 ms de adentro: si
+#: se alcanza, el candidato no arrancó o se colgó, y las dos cosas son "no
+#: sirve".
+SONDA_LIMITE_SEGUNDOS = 8.0
 
 
 class SinFrontera(RuntimeError):
@@ -125,13 +230,165 @@ class Resultado:
 # --- La frontera de red -----------------------------------------------------
 
 
-def frontera_de_red(sistema=None, buscar=shutil.which):
+def observar_red(prefijo, limite=SONDA_LIMITE_SEGUNDOS):
+    """Corre `SONDA_JS` bajo `prefijo` y devuelve qué vio de la red.
+
+    Devuelve `(interfaces, salida, crudo)`, donde `interfaces` es la cantidad de
+    interfaces que no son loopback y `salida` es el síntoma del intento de
+    conexión. Si la sonda no llegó a correr —el candidato no arrancó, o se
+    colgó—, `interfaces` es `None` y `crudo` trae por qué.
+
+    No juzga: informa. Quien decide si eso es una frontera es `_probar_frontera`,
+    que compara esta observación contra la de afuera.
+    """
+    argv = list(prefijo) + [_binario_de_node(), "-e", SONDA_JS]
+    try:
+        proceso = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=limite,
+            env=dict(ENTORNO_MINIMO),
+        )
+    except subprocess.TimeoutExpired:
+        return None, None, "la sonda no terminó en %.0f s" % limite
+    except OSError as e:
+        return None, None, "no se pudo lanzar la sonda: %s" % e
+
+    texto = (proceso.stdout or "").strip()
+    marcas = dict(
+        parte.split("=", 1) for parte in texto.split(" ") if "=" in parte
+    )
+    if "INTERFACES" not in marcas or "SALIDA" not in marcas:
+        detalle = (proceso.stderr or "").strip() or texto or "sin salida"
+        return None, None, "código %s — %s" % (proceso.returncode, detalle)
+    return int(marcas["INTERFACES"]), marcas["SALIDA"], texto
+
+
+def _probar_frontera(prefijo, control, observar):
+    """¿El prefijo aísla la red? Devuelve `(aisla, detalle)`.
+
+    `control` es la observación de afuera, sin prefijo. **Se compara contra ella
+    y no contra una expectativa fija**, porque una máquina sin red haría pasar
+    cualquier frontera: si afuera tampoco hay interfaces, la sonda no puede
+    distinguir el aislamiento del cable desenchufado, y eso se informa como
+    inconcluso en vez de como éxito.
+    """
+    interfaces_afuera, salida_afuera, crudo_afuera = control
+    if interfaces_afuera is None:
+        return False, (
+            "la sonda de control no corrió ni siquiera sin frontera (%s), así que "
+            "no hay contra qué comparar" % crudo_afuera
+        )
+    if interfaces_afuera == 0:
+        return False, (
+            "sin frontera esta máquina ya no ve ninguna interfaz de red "
+            "(control: %s). La sonda no puede distinguir el aislamiento de una "
+            "máquina desconectada, así que no afirma nada" % crudo_afuera
+        )
+
+    interfaces, salida, crudo = observar(prefijo)
+    if interfaces is None:
+        return False, "el candidato no llegó a correr: %s" % crudo
+    if interfaces > 0:
+        return False, (
+            "corrió, pero adentro siguen viéndose %d interfaces de red que no son "
+            "loopback (%s). No aisló nada" % (interfaces, crudo)
+        )
+    if salida == "CONECTO":
+        return False, (
+            "corrió y no hay interfaces, pero la conexión saliente igual se "
+            "estableció (%s). Eso no es una frontera" % crudo
+        )
+    return True, "adentro %s / afuera %s" % (crudo, crudo_afuera)
+
+
+def _frontera_linux(buscar, observar):
+    """El primer candidato que la sonda apruebe, o `SinFrontera` con el detalle.
+
+    El detalle es todo el punto: si mañana AppArmor bloquea el espacio de
+    nombres, el mensaje tiene que alcanzar para saber qué tocar sin volver a
+    leer este módulo entero.
+    """
+    presentes = []
+    intentos = []
+    for nombre, binario, argumentos in CANDIDATOS_LINUX:
+        ruta = buscar(binario)
+        if ruta is None:
+            intentos.append((nombre, "no está `%s` en el PATH" % binario))
+            continue
+        presentes.append((nombre, [ruta] + list(argumentos)))
+
+    if not presentes:
+        return _sin_frontera_linux(intentos, control=None)
+
+    # El control se observa una sola vez y recién cuando hay algo que comparar.
+    control = observar([])
+    for nombre, prefijo in presentes:
+        aisla, detalle = _probar_frontera(prefijo, control, observar)
+        if aisla:
+            return nombre, prefijo
+        intentos.append((nombre, detalle))
+    return _sin_frontera_linux(intentos, control=control)
+
+
+def _sin_frontera_linux(intentos, control):
+    """El mensaje que se lee mañana en la mini PC.
+
+    Dice **que se probó**, no sólo que no hay: qué candidato, con qué argumentos
+    y con qué murió. Un "no hay frontera" a secas manda a alguien a reconstruir
+    desde cero lo que la máquina ya contestó.
+    """
+    lineas = [
+        "Frontera buscada: un espacio de nombres de red vacío, que en Linux "
+        "deniega la red en el kernel por ausencia de interfaz y de ruta.",
+        "",
+        "Se probó cada candidato con una sonda real; ninguno pasó:",
+    ]
+    for nombre, detalle in intentos:
+        lineas.append("  - %s: %s" % (nombre, detalle))
+    if control is not None:
+        lineas.append("")
+        lineas.append("Observación de control, sin frontera: %s" % (control[2],))
+    lineas += [
+        "",
+        "Qué mirar primero, por probabilidad:",
+        "  1. `sysctl kernel.apparmor_restrict_unprivileged_userns` — Ubuntu "
+        "24.04 lo trae en 1 de fábrica y eso hace fallar `unshare --user` con "
+        "EPERM. Es el motivo más probable de todos.",
+        "  2. `unshare --version` — `--map-current-user` es de util-linux 2.38. "
+        "Con 2.37 sólo sirve la variante `--map-root-user`.",
+        "  3. `sysctl user.max_user_namespaces` — si está en 0, no hay espacios "
+        "de nombres de usuario para nadie.",
+        "  4. `bwrap` no viene instalado en Ubuntu Server; se instala con "
+        "`apt install bubblewrap`.",
+        "",
+        "Esta rama se escribió el %s en una máquina donde Linux no se podía "
+        "correr ni una vez, así que **nadie la vio funcionar**. La sonda existe "
+        "por eso: no se da por buena, se comprueba." % LINUX_ESCRITA_SIN_MEDIR,
+        "",
+        "Antes de reemplazarla por un filtro `seccomp`, leer el docstring de "
+        "este módulo: está descartado con motivo, no por olvido.",
+        "",
+        "Sin frontera de kernel no se ejecuta: el bloqueo de red dentro del "
+        "proceso es evadible y está documentado arriba en este módulo.",
+    ]
+    raise SinFrontera("\n".join(lineas))
+
+
+def frontera_de_red(sistema=None, buscar=shutil.which, observar=None):
     """El prefijo de comando que le saca la red al proceso, o `SinFrontera`.
 
     Devuelve `(nombre, argv_prefijo)`. El nombre viaja en el `Resultado` para que
     quede registrado bajo qué frontera corrió cada ejecución: dos corridas con
     fronteras distintas no son comparables, y el dato no se puede reconstruir
     después.
+
+    **Los dos sistemas se resuelven distinto a propósito.** En macOS alcanza con
+    encontrar el binario, porque la frontera está medida. En Linux no lo está, así
+    que se corre una sonda: encontrar `unshare` no prueba que el espacio de
+    nombres se pueda crear.
     """
     sistema = platform.system() if sistema is None else sistema
 
@@ -148,17 +405,19 @@ def frontera_de_red(sistema=None, buscar=shutil.which):
             )
         return "sandbox-exec", [ruta, "-p", PERFIL_SIN_RED]
 
+    if sistema == "Linux":
+        return _frontera_linux(buscar, observar or observar_red)
+
     raise SinFrontera(
         "Frontera buscada: una que deniegue la red en el kernel para el sistema "
         "'%s'.\n"
-        "Por qué no se consiguió: este ejecutor sólo tiene escrita y medida la de "
-        "macOS (`sandbox-exec`). En Linux la equivalente es un espacio de nombres "
-        "de red —`unshare --net`—, que no está escrita acá y sobre la que no se "
-        "midió nada; darla por buena sin medirla sería exactamente lo que este "
-        "módulo evita.\n"
+        "Por qué no se consiguió: este ejecutor tiene escrita la de macOS "
+        "(`sandbox-exec`, medida) y la de Linux (espacio de nombres de red, "
+        "probada con sonda en cada uso). Para '%s' no hay ninguna, y darla por "
+        "buena sin medirla sería exactamente lo que este módulo evita.\n"
         "Sin frontera de kernel no se ejecuta: el bloqueo de red dentro del "
         "proceso es evadible y está documentado arriba en este módulo."
-        % sistema
+        % (sistema, sistema)
     )
 
 
