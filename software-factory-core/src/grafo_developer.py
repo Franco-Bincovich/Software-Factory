@@ -202,18 +202,23 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
             # allá escala. Igualar los tres nodos "para que se comporten igual"
             # sería, en un sentido o en el otro, o hacer que QA firme sin mirar o
             # hacer que una iteración mala corte la corrida.
-            store.append(
-                run_id,
-                "respuesta_ilegible",
-                PLATAFORMA,
-                {
-                    "etapa": "entrega",
-                    "motivo": ilegible.motivo,
-                    "detalle": ilegible.detalle,
-                    "unidad": estado["unidad"]["id"],
-                    "iteracion": estado["iteracion"],
-                },
+            #
+            # El texto se deposita **antes** del evento y el evento lo referencia
+            # por ruta y hash: ADR-017, el registro crece con los hechos y no con
+            # el tamaño de lo que el modelo escribió. Ver `raiz_ilegibles`.
+            payload = {
+                "etapa": "entrega",
+                "motivo": ilegible.motivo,
+                "detalle": ilegible.detalle,
+                "unidad": estado["unidad"]["id"],
+                "iteracion": estado["iteracion"],
+            }
+            payload.update(
+                deposito.depositar_ilegible(
+                    run_id, "entrega", estado["iteracion"], ilegible.texto
+                )
             )
+            store.append(run_id, "respuesta_ilegible", PLATAFORMA, payload)
             if ilegible.consumo:
                 presupuesto.registrar_consumo(store, run_id, ilegible.consumo)
             # **No se deposita y no se emite `entrega_producida`.** No hay entrega
@@ -421,18 +426,27 @@ def _nodo_qa(store, qa_fn, ruta_vault, costo_iteracion):
             # es la red.
             if ilegible.consumo:
                 presupuesto.registrar_consumo(store, run_id, ilegible.consumo)
-            store.append(
-                run_id,
-                "respuesta_ilegible",
-                PLATAFORMA,
-                {
-                    "etapa": "qa",
-                    "motivo": ilegible.motivo,
-                    "detalle": ilegible.detalle,
-                    "unidad": estado["unidad"]["id"],
-                    "iteracion": estado["iteracion"],
-                },
+            #
+            # El texto se deposita **antes** del evento y el evento lo referencia
+            # por ruta y hash: ADR-017, el registro crece con los hechos y no con
+            # el tamaño de lo que el modelo escribió. Ver `raiz_ilegibles`.
+            #
+            # Acá pesa más que en los otros dos nodos: éste es el único de los
+            # tres donde la respuesta ilegible **corta la corrida**, así que el
+            # texto depositado es todo lo que va a haber para entender por qué.
+            payload = {
+                "etapa": "qa",
+                "motivo": ilegible.motivo,
+                "detalle": ilegible.detalle,
+                "unidad": estado["unidad"]["id"],
+                "iteracion": estado["iteracion"],
+            }
+            payload.update(
+                deposito.depositar_ilegible(
+                    run_id, "qa", estado["iteracion"], ilegible.texto
+                )
             )
+            store.append(run_id, "respuesta_ilegible", PLATAFORMA, payload)
             return {"resultado": "escalado_por_qa_ilegible"}
 
         if isinstance(producido, tuple):

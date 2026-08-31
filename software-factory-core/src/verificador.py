@@ -4,7 +4,7 @@ Recibe un Plan de Trabajo y el texto del pedido que lo originó, y devuelve un
 veredicto binario más la lista de incumplimientos. No corrige, no interpreta, no
 completa: solo comprueba y localiza.
 
-Evalúa las ocho reglas siempre; no corta en el primer incumplimiento. Si el
+Evalúa las nueve reglas siempre; no corta en el primer incumplimiento. Si el
 plan no valida contra el esquema, devuelve regla 0 y no evalúa el resto.
 """
 
@@ -70,6 +70,47 @@ _RE_AJENOS = re.compile(
     "|".join(
         [r"\b%s\b" % re.escape(t) for t in TERMINOS_AJENOS]
         + [r"%s\b" % re.escape(e) for e in EXTENSIONES_AJENAS]
+    ),
+    re.IGNORECASE,
+)
+
+#: Cómo un procedimiento delega la comprobación en un ejecutor que no existe del
+#: lado de acá de la frontera. Van como perífrasis y no como lista de comandos
+#: **porque así es como aparece en el registro**: de los siete criterios que la
+#: regla 9 corta, cinco no nombran ninguna herramienta. Dicen "correr el comando
+#: de ejecución de pruebas del proyecto".
+#:
+#: No es casualidad. La regla 8 ya castiga nombrar `pytest`, así que el nombre
+#: propio desaparece y queda la perífrasis, que dice exactamente lo mismo y no la
+#: cortaba nadie. Una lista de comandos —`npm test`, `jest`, `npx`— medida contra
+#: los ocho planes del registro corta dos criterios, y los dos ya los cortaba la
+#: regla 8 por decir `pytest` en el mismo renglón: aporte neto cero.
+DELEGACION_EN_EJECUTOR = (
+    r"\brunners?\b",
+    r"\bcomando\s+de\s+(la\s+)?(ejecuci[oó]n\s+de\s+)?(las\s+)?(pruebas|tests?)\b",
+    r"\bsuite\s+de\s+(pruebas|tests?)\b",
+)
+
+#: Las herramientas del propio JavaScript. La regla 8 no las ve —y hace bien: son
+#: del lenguaje que la Fábrica sí produce—, pero la frontera de ADR-016 no las
+#: da igual, porque no hay red y no se instala nada.
+HERRAMIENTAS_SIN_FRONTERA = (
+    "npm test", "npm run", "npm install", "npm ci",
+    "yarn", "pnpm", "npx",
+    "jest", "mocha", "vitest", "jasmine", "karma", "cypress",
+    "playwright", "puppeteer", "selenium",
+    "eslint", "prettier", "webpack", "rollup", "babel", "tsc",
+)
+
+#: `\s+` en lugar del espacio literal: "npm  test" partido por un salto de línea
+#: es el mismo comando y esquivarla por un espacio de más sería un agujero.
+_RE_SIN_EJECUTOR = re.compile(
+    "|".join(
+        list(DELEGACION_EN_EJECUTOR)
+        + [
+            r"\b%s\b" % re.escape(h).replace(r"\ ", r"\s+")
+            for h in HERRAMIENTAS_SIN_FRONTERA
+        ]
     ),
     re.IGNORECASE,
 )
@@ -276,6 +317,67 @@ def _regla_8(plan):
     return fallos
 
 
+def _regla_9(plan):
+    """El procedimiento no delega la comprobación en un ejecutor que no existe.
+
+    QA corre cada caso con `node -e` sin red y sin instalar nada (ADR-016). Un
+    criterio cuyo procedimiento dice "correr el comando de ejecución de pruebas
+    del proyecto y verificar que el reporte indique cero fallos" no tiene ningún
+    caso posible: del lado de acá de la frontera no hay comando que correr ni
+    reporte que leer.
+
+    Lo que pasa cuando no se corta está medido. Contra los ocho planes del
+    registro, siete llevan un criterio así, y de las tres corridas que llegaron a
+    ejecutarlo con QA encendido, dos murieron con el techo de salida quemado y
+    sin producir un solo caso. Es el defecto que ADR-018 punto 5 anotó como
+    "2 de 11 criterios ejecutables".
+
+    **Se mira `procedimiento` y ningún otro campo.** Ésta es la distinción que
+    hace correcta a la regla, y la primera que alguien va a querer "completar"
+    extendiéndola a `artefacto_esperado`. No se extiende, y el motivo es que los
+    dos campos dicen cosas distintas:
+
+    - `artefacto_esperado` describe **qué se produce**. Una unidad puede tener
+      que entregar legítimamente un archivo de pruebas, o un `package.json` con
+      su script de test. Prohibir ahí la palabra sería prohibirle a la Fábrica
+      producir tests, que es lo contrario de lo que se quiere.
+    - `procedimiento` describe **cómo se comprueba**, y el que comprueba es QA,
+      atado a la frontera. Es el único campo donde nombrar una herramienta es
+      comprometer a alguien a usarla.
+
+    La diferencia se ve en una unidad sola: "entregar `pruebas.js` con al menos
+    dos casos" es un artefacto impecable, y "correr la suite y ver que dé cero
+    fallos" es un procedimiento imposible. La misma unidad, y sólo el segundo
+    campo está mal. Una regla que mirara los dos rechazaría la unidad entera por
+    la mitad que estaba bien.
+
+    Es también la diferencia con la regla 8, que sí mira varios campos: allá el
+    lenguaje ajeno contamina donde aparezca, porque el Developer no lo sabe
+    producir en ninguna parte. Acá el problema no es la herramienta, es *quién
+    tendría que correrla*.
+    """
+    fallos = []
+    for u in plan["unidades"]:
+        for j, criterio in enumerate(u["criterios"]):
+            texto = criterio.get("procedimiento") or ""
+            for termino in sorted(
+                set(m.group(0).lower() for m in _RE_SIN_EJECUTOR.finditer(texto))
+            ):
+                fallos.append(
+                    _incumplimiento(
+                        9,
+                        "El procedimiento delega la comprobación en '%s'. La "
+                        "verificación corre con `node -e` sin red y sin instalar "
+                        "nada, así que no hay runner ni reporte que leer: el "
+                        "procedimiento tiene que decir qué se invoca y qué valor "
+                        "se espera." % termino,
+                        unidad=u["id"],
+                        criterio=j,
+                    )
+                )
+    return fallos
+
+
 # --- Orquestación -----------------------------------------------------------
 
 
@@ -296,6 +398,7 @@ def verificar(plan, pedido, esquema=None):
     incumplimientos += _regla_6(plan)
     incumplimientos += _regla_7(plan)
     incumplimientos += _regla_8(plan)
+    incumplimientos += _regla_9(plan)
 
     incumplimientos.sort(
         key=lambda i: (i["regla"], i["unidad"] or "", -1 if i["criterio"] is None else i["criterio"])

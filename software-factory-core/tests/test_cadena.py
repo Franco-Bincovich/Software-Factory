@@ -1399,12 +1399,11 @@ def tiene_centinela(deposito):
     return False
 
 
-class EngancheDeQA(BaseCadena):
-    """QA corre por unidad, después del verificador estructural.
+class BaseQA(BaseCadena):
+    """Armado de una cadena con QA enganchado. Sin tests: sólo el andamio.
 
-    Los casos se inyectan y el ejecutor se reemplaza: acá se prueba dónde entra
-    QA en el grafo y qué queda registrado, no la frontera —eso es
-    `test_ejecutor`— ni el veredicto —eso es `test_verificacion_sustantiva`—.
+    Está separada de `EngancheDeQA` para que otra clase pueda correr una cadena
+    con QA sin heredar además sus tests, que se ejecutarían de nuevo.
     """
 
     def setUp(self):
@@ -1457,6 +1456,15 @@ class EngancheDeQA(BaseCadena):
             cadena.materializar_evidencia,
         )
         return run, plan, estado
+
+
+class EngancheDeQA(BaseQA):
+    """QA corre por unidad, después del verificador estructural.
+
+    Los casos se inyectan y el ejecutor se reemplaza: acá se prueba dónde entra
+    QA en el grafo y qué queda registrado, no la frontera —eso es
+    `test_ejecutor`— ni el veredicto —eso es `test_verificacion_sustantiva`—.
+    """
 
     # --- las dos piezas van juntas -----------------------------------------
 
@@ -1731,6 +1739,164 @@ class EngancheDeQA(BaseCadena):
         self.assertTrue(self.de_tipo(run_developer, "verificacion_ejecutada"))
         (escalado,) = self.de_tipo(run_developer, "escalamiento")
         self.assertEqual(escalado["payload"]["motivo"], "escalado_por_iteraciones")
+
+
+# --- 12 — lo que no se pudo leer se guarda igual ----------------------------
+
+
+TRUNCADA = '{"casos": [{"criterio": "el reporte indica cero fallos", "arch'
+
+
+class RespuestaIlegibleDepositada(BaseQA):
+    """Una respuesta que costó plata y no se pudo leer es evidencia.
+
+    Se agregó después de que dos corridas seguidas murieran contra el mismo
+    techo de salida —`3a5b789f` y `7680cb8e`, las dos con `stop_reason:
+    max_tokens` en 8.000 exactos— y no quedara un carácter de lo que habían
+    contestado. Se sabía cuánto se había pagado; no si el agente había intentado
+    algo o se había enredado desde el primer token. El diagnóstico de por qué
+    una respuesta no se pudo leer no se hace sin la respuesta.
+
+    El texto va al área de artefactos y no al payload, por ADR-017: el registro
+    crece con la cantidad de hechos y no con el tamaño de lo que el modelo
+    escribió. Ver `deposito.raiz_ilegibles`.
+    """
+
+    def ilegible_de(self, run_id, iteracion, etapa):
+        return deposito.raiz_ilegibles() / run_id / ("%s-%s.txt" % (iteracion, etapa))
+
+    def test_el_texto_que_qa_alcanzo_a_escribir_queda_en_disco(self):
+        def ilegible(unidad, plan, entrega, deposito_, contexto_vault):
+            raise grafo.RespuestaIlegible(
+                "truncada", "llegó al techo", consumo=0.12, texto=TRUNCADA
+            )
+
+        run, _, _ = self.correr_con_qa(ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "respuesta_ilegible")
+        payload = evento["payload"]
+
+        archivo = self.ilegible_de(run_developer, payload["iteracion"], "qa")
+        self.assertEqual(archivo.read_text(encoding="utf-8"), TRUNCADA)
+
+    def test_el_evento_lo_referencia_por_ruta_y_hash_y_no_lo_contiene(self):
+        """Las dos mitades de ADR-017, aplicadas a lo que no se pudo leer.
+
+        La ruta es relativa al directorio de estado —ADR-014 punto 3— y el hash
+        es lo que ata el evento inmutable al archivo, que no lo es.
+        """
+
+        def ilegible(unidad, plan, entrega, deposito_, contexto_vault):
+            raise grafo.RespuestaIlegible(
+                "truncada", "llegó al techo", consumo=0.12, texto=TRUNCADA
+            )
+
+        run, _, _ = self.correr_con_qa(ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "respuesta_ilegible")
+        payload = evento["payload"]
+
+        self.assertNotIn(TRUNCADA, json.dumps(payload, ensure_ascii=False))
+        self.assertFalse(Path(payload["ruta"]).is_absolute())
+        self.assertEqual(payload["sha256"], deposito.sha256_de(TRUNCADA))
+        self.assertEqual(payload["bytes"], len(TRUNCADA.encode("utf-8")))
+
+        archivo = operational_state.absoluta_desde(
+            payload["ruta"], operational_state.DIR_ESTADO
+        )
+        self.assertEqual(
+            deposito.sha256_de(Path(archivo).read_text(encoding="utf-8")),
+            payload["sha256"],
+        )
+
+    def test_no_cae_adentro_del_deposito_que_qa_ejecuta(self):
+        """Es un área tercera, y ésta es la razón de que lo sea.
+
+        El depósito de una iteración es una copia ejecutable del espacio de
+        trabajo. Un archivo con la respuesta fallada del modelo ahí adentro
+        aparecería en el inventario del espacio, en el contexto de la parte
+        siguiente y en el árbol que la verificación sustantiva copia y corre.
+        """
+
+        def ilegible(unidad, plan, entrega, deposito_, contexto_vault):
+            raise grafo.RespuestaIlegible(
+                "truncada", "llegó al techo", consumo=0.12, texto=TRUNCADA
+            )
+
+        run, _, _ = self.correr_con_qa(ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        deposito_qa = cadena.raiz_entregas() / run_developer
+        self.assertTrue(deposito_qa.is_dir())
+        for archivo in deposito_qa.rglob("*"):
+            if archivo.is_file():
+                self.assertNotIn(TRUNCADA, archivo.read_text(encoding="utf-8"))
+
+    def test_tambien_se_guarda_la_del_developer(self):
+        """No es un arreglo de QA: los tres productores se truncan igual.
+
+        En QA la respuesta ilegible corta la corrida y por eso duele más, pero
+        acá gasta una iteración del ciclo de corrección y el porqué se pierde
+        exactamente igual.
+        """
+
+        def ilegible(unidad, contexto, entrega, incumplimientos, contexto_vault,
+                     paquete=None):
+            raise grafo.RespuestaIlegible(
+                "truncada", "llegó al techo", consumo=0.01, texto=TRUNCADA
+            )
+
+        run, _, _ = self.correr_cadena(developer=ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        eventos = self.de_tipo(run_developer, "respuesta_ilegible")
+        self.assertTrue(eventos)
+        for evento in eventos:
+            archivo = self.ilegible_de(
+                run_developer, evento["payload"]["iteracion"], "entrega"
+            )
+            self.assertEqual(archivo.read_text(encoding="utf-8"), TRUNCADA)
+
+    def test_tambien_se_guarda_la_del_plan(self):
+        """El tercero. El plan se produce en `grafo`, no en la cadena."""
+
+        def ilegible(pedido, plan_anterior, incumplimientos, contexto_vault):
+            raise grafo.RespuestaIlegible(
+                "truncada", "llegó al techo", consumo=0.01, texto=TRUNCADA
+            )
+
+        run = grafo.ejecutar(
+            str(self.ruta_requirement), dict(PEDIDO), ilegible, self.store,
+            self.checkpointer, None, 0.0, modo=grafo.MODO_STUB,
+            ejecutar_unidades_fn=self.nodo(),
+            borrar_trabajo_fn=cadena.borrar_directorio,
+            materializar_fn=cadena.materializar_evidencia,
+        )
+        # El nodo del plan corre recién después del Gate de entrada.
+        gates.resolver(self.store, run, "entrada", "aprobado")
+        grafo.reanudar(
+            run, self.store, self.checkpointer, ilegible, None, 0.0,
+            self.nodo(), cadena.borrar_directorio, cadena.materializar_evidencia,
+        )
+        eventos = self.de_tipo(run, "respuesta_ilegible")
+        self.assertTrue(eventos)
+        self.assertEqual(eventos[0]["payload"]["etapa"], "plan")
+        archivo = self.ilegible_de(run, eventos[0]["payload"]["iteracion"], "plan")
+        self.assertEqual(archivo.read_text(encoding="utf-8"), TRUNCADA)
+
+    def test_sin_texto_el_evento_sale_como_antes(self):
+        """No se inventa un archivo vacío para tener siempre los tres campos.
+
+        Un `ruta` que apunte a la nada sería el registro afirmando evidencia que
+        no existe, que es contra lo que se escribió el orden de `depositar`.
+        """
+
+        def ilegible(unidad, plan, entrega, deposito_, contexto_vault):
+            raise grafo.RespuestaIlegible("truncada", "llegó al techo", consumo=0.12)
+
+        run, _, _ = self.correr_con_qa(ilegible)
+        run_developer = self.de_tipo(run, "unidad_lanzada")[0]["payload"]["run_developer"]
+        (evento,) = self.de_tipo(run_developer, "respuesta_ilegible")
+        self.assertNotIn("ruta", evento["payload"])
+        self.assertFalse((deposito.raiz_ilegibles() / run_developer).exists())
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ igual. Ver ADR-020.
 
 ---
 
-## Las ocho reglas
+## Las nueve reglas
 
 | # | Comprueba | Cómo | Mecánica |
 |---|---|---|---|
@@ -77,8 +77,9 @@ igual. Ver ADR-020.
 | 6 | Máximo 10 unidades | `len(unidades) <= 10` | Total |
 | 7 | Sin ciclos | Orden topológico del grafo de dependencias | Total |
 | 8 | Sin lenguaje ajeno | Ningún término de `TERMINOS_AJENOS` ni extensión de `EXTENSIONES_AJENAS` aparece en `supuestos`, `enunciado`, `artefacto_esperado`, `ruta_artefacto` ni en las tres partes de un criterio | Parcial — lista cerrada |
+| 9 | Sin delegación en un ejecutor | Ningún término de `DELEGACION_EN_EJECUTOR` ni de `HERRAMIENTAS_SIN_FRONTERA` aparece en el `procedimiento` de un criterio | Parcial — lista cerrada |
 
-**Las reglas 2, 5 y 8 son parciales y hay que decirlo.** La 2 verifica que las
+**Las reglas 2, 5, 8 y 9 son parciales y hay que decirlo.** La 2 verifica que las
 tres partes estén, no que el criterio sea bueno: un criterio con tres campos
 llenos de texto vago pasa. La 5 detecta coincidencia de palabras, no de
 significado: un plan que viola el alcance excluido usando otras palabras pasa.
@@ -94,6 +95,16 @@ Las dos primeras son las que la verificación sustantiva de V0.3 tiene que
 cubrir. Hasta entonces las cubre el Gate humano, y esa es la razón concreta por
 la que el Gate de salida no es una formalidad.
 
+La 9 es parcial por el mismo motivo que la 8, con una vuelta más: **su lista son
+perífrasis, no comandos.** La regla 8 ya castiga decir `pytest`, así que el
+nombre propio desapareció y quedó "el comando de ejecución de pruebas del
+proyecto", que dice lo mismo. De los siete criterios del registro que la 9 corta,
+**cinco no nombran ninguna herramienta**. Medida contra los ocho planes, una
+lista de comandos —`npm test`, `jest`, `npx`— corta dos criterios y los dos ya
+los cortaba la 8 en el mismo renglón: aporte neto cero. Un procedimiento que
+diga "se ejecuta el archivo de verificación del proyecto" la esquiva igual; eso
+lo ataca el prompt del Requirement, no la regla. Ver ADR-021.
+
 ### Los dos campos que la regla 8 no mira
 
 `fuera_de_alcance` y `restricciones.alcance_excluido` quedan afuera a propósito.
@@ -101,6 +112,18 @@ En los dos, nombrar un lenguaje es **excluirlo**: "no se implementa en Python"
 es una aclaración legítima, y prohibirla obligaría a escribir peor. El segundo
 además se copia literal del pedido, así que rechazar el plan por su contenido
 sería castigar al agente por obedecer.
+
+### El único campo que la regla 9 mira
+
+`procedimiento`, y ninguno más. En particular **no** `artefacto_esperado`: ese
+campo dice qué se produce, y una unidad puede tener que entregar legítimamente un
+archivo de pruebas. En una misma unidad, «entregar `pruebas.js` con al menos dos
+casos» es un artefacto impecable y «correr la suite y ver que dé cero fallos» es
+un procedimiento imposible; una regla que mirara los dos rechazaría la unidad
+entera por la mitad que estaba bien. Es la asimetría con la 8: allá el lenguaje
+ajeno contamina donde aparezca, porque el Developer no lo sabe producir en
+ninguna parte. Acá el problema no es la herramienta sino quién tendría que
+correrla, y el que comprueba —QA— está atado a la frontera de ADR-016.
 
 ---
 
@@ -142,7 +165,7 @@ corregir en vez de regenerar.
 
 ## Criterio de aceptación de T7
 
-Siete planes de prueba. El verificador detecta exactamente el defecto sembrado en
+Ocho planes de prueba. El verificador detecta exactamente el defecto sembrado en
 cada uno y no marca nada en el limpio.
 
 | Fixture | Defecto sembrado | Debe disparar |
@@ -154,6 +177,7 @@ cada uno y no marca nada en el limpio.
 | `plan-r5.json` | Una unidad que produce interfaz gráfica, con "interfaz gráfica" en `alcance_excluido` | Regla 5 |
 | `plan-r7.json` | U1 depende de U2 y U2 de U1 | Regla 7 |
 | `plan-r8.json` | Un supuesto que elige Python y pytest, una `ruta_artefacto` con extensión `.py` y un `procedimiento` que nombra pytest | Regla 8 |
+| `plan-r9.json` | Dos procedimientos que delegan —uno en un runner, otro en `npm test` y una suite— y un `artefacto_esperado` que nombra una suite de pruebas y **no** debe disparar | Regla 9 |
 
 Además: sobre `plan-ok.json` el verificador no debe reportar ningún
 incumplimiento. Un falso positivo sobre el plan limpio invalida T7 igual que un

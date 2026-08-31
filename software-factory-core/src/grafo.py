@@ -50,6 +50,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
+import deposito
 import gates
 import operational_state
 import presupuesto
@@ -230,13 +231,22 @@ class RespuestaIlegible(RuntimeError):
     **El grafo no la trata igual en todos lados, y eso es deliberado.** Ver
     `grafo_developer._nodo_qa`, que la escala, contra los dos `_nodo_producir`,
     que siguen el ciclo de corrección. El porqué está escrito en cada uno.
+
+    `texto` es lo que el modelo alcanzó a escribir. Se agregó después de que dos
+    corridas seguidas murieran contra el mismo techo de salida y no quedara un
+    carácter de lo que habían contestado: se sabía cuánto se había pagado y no si
+    el agente había intentado algo o se había enredado desde el primer token. Una
+    respuesta que costó plata y no se pudo leer es evidencia, y el diagnóstico de
+    por qué no se pudo leer no se hace sin ella. El texto no viaja al evento —lo
+    deposita `deposito.depositar_ilegible`—; acá viaja para llegar hasta ahí.
     """
 
-    def __init__(self, motivo, detalle, consumo=0.0):
+    def __init__(self, motivo, detalle, consumo=0.0, texto=""):
         super().__init__("%s: %s" % (motivo, detalle))
         self.motivo = motivo
         self.detalle = detalle
         self.consumo = consumo
+        self.texto = texto
 
 
 class _Techos(object):
@@ -496,17 +506,22 @@ def _nodo_producir(store, producir_fn, ruta_vault, costo_iteracion):
             # `grafo_developer._nodo_qa` hace lo contrario con esta misma
             # excepción, y el porqué está escrito ahí: QA no tiene verificador
             # abajo, así que su silencio sí aprueba.
-            store.append(
-                run_id,
-                "respuesta_ilegible",
-                PLATAFORMA,
-                {
-                    "etapa": "plan",
-                    "motivo": ilegible.motivo,
-                    "detalle": ilegible.detalle,
-                    "iteracion": estado["iteracion"],
-                },
+            #
+            # El texto se deposita **antes** del evento y el evento lo referencia
+            # por ruta y hash: ADR-017, el registro crece con los hechos y no con
+            # el tamaño de lo que el modelo escribió. Ver `raiz_ilegibles`.
+            payload = {
+                "etapa": "plan",
+                "motivo": ilegible.motivo,
+                "detalle": ilegible.detalle,
+                "iteracion": estado["iteracion"],
+            }
+            payload.update(
+                deposito.depositar_ilegible(
+                    run_id, "plan", estado["iteracion"], ilegible.texto
+                )
             )
+            store.append(run_id, "respuesta_ilegible", PLATAFORMA, payload)
             # El consumo sigue el camino normal de abajo: la invocación se pagó.
             producido = ({}, ilegible.consumo)
 

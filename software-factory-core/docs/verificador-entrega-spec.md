@@ -61,7 +61,7 @@ C0**. Es la misma mecánica por la que T7 delega la forma en su regla 0.
 
 ## Los identificadores de regla
 
-En T7 la regla es un entero, porque las ocho salen de un solo documento. Acá
+En T7 la regla es un entero, porque las nueve salen de un solo documento. Acá
 salen de tres, y el prefijo dice de cuál. Un incumplimiento que no se puede
 rastrear al documento que lo exige no se puede discutir.
 

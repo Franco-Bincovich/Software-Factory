@@ -1,7 +1,7 @@
 """Ningún test escribe en el directorio de estado real.
 
-El estado operativo —`factory.db`, `trabajo/`, `entregas/`, `checkpointer/`—
-es evidencia de producción. Una suite que escriba ahí contamina esa evidencia
+El estado operativo —`factory.db`, `trabajo/`, `entregas/`, `ilegibles/`,
+`checkpointer/`— es evidencia de producción. Una suite que escriba ahí contamina esa evidencia
 con su propia salida, y un test que *lea* esa área termina validando en parte
 lo que la propia suite acaba de producir.
 
@@ -30,6 +30,7 @@ sys.path.insert(0, str(RAIZ / "tests"))
 sys.path.insert(0, str(RAIZ))
 
 import cadena  # noqa: E402
+import deposito  # noqa: E402
 import grafo  # noqa: E402
 import operational_state  # noqa: E402
 
@@ -90,6 +91,7 @@ class ElEstadoRealNoSeToca(unittest.TestCase):
                     derivadas = {
                         "DIR_ESTADO": operational_state.DIR_ESTADO,
                         "entregas/": cadena.raiz_entregas(),
+                        "ilegibles/": deposito.raiz_ilegibles(),
                     }
                     for que, ruta in derivadas.items():
                         self.assertFalse(
@@ -137,7 +139,7 @@ class ElEstadoRealNoSeToca(unittest.TestCase):
 
 
 class ElAnclajeSigueSiendoUnaSolaVariable(unittest.TestCase):
-    """`entregas/` se resuelve tarde, y de ahí que redirigirla funcione.
+    """`entregas/` y `ilegibles/` se resuelven tarde, y por eso se redirigen.
 
     Si alguna vez se congelara en una constante de módulo —como sí lo están
     `RAIZ_TRABAJO_POR_DEFECTO` y `RUTA_CHECKPOINTER_POR_DEFECTO`, que por eso
@@ -145,14 +147,13 @@ class ElAnclajeSigueSiendoUnaSolaVariable(unittest.TestCase):
     volverían en silencio.
     """
 
-    def test_raiz_entregas_se_calcula_tarde(self):
+    def test_las_areas_derivadas_se_calculan_tarde(self):
         original = operational_state.DIR_ESTADO
-        operational_state.DIR_ESTADO = Path("/tmp/estado-inventado-para-el-test")
+        inventado = Path("/tmp/estado-inventado-para-el-test")
+        operational_state.DIR_ESTADO = inventado
         try:
-            self.assertEqual(
-                cadena.raiz_entregas(),
-                Path("/tmp/estado-inventado-para-el-test/entregas"),
-            )
+            self.assertEqual(cadena.raiz_entregas(), inventado / "entregas")
+            self.assertEqual(deposito.raiz_ilegibles(), inventado / "ilegibles")
         finally:
             operational_state.DIR_ESTADO = original
 

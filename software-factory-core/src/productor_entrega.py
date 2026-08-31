@@ -588,17 +588,25 @@ def crear_productor(api_key, modelo=MODELO_POR_DEFECTO, ruta_vault=None, cliente
         # Ojo con la vecindad: la entrega vacía **deliberada** está unas líneas
         # más abajo y sale por `UnidadAmbigua`. Ésa parseó bien y dice un motivo;
         # ésta no se pudo leer. Que las dos terminen sin entrega no las iguala.
+        #
+        # Las dos llevan el texto que el modelo alcanzó a escribir. Es lo único
+        # que permite después decir *por qué* no se pudo leer, y se descartaba
+        # acá mismo. Quién lo guarda es el grafo, contra el área de artefactos.
+        texto = _texto_de(respuesta)
         if respuesta.stop_reason == "max_tokens":
             raise RespuestaIlegible(
                 "truncada",
                 "el modelo llegó al techo de %d tokens de salida y la respuesta "
                 "quedó cortada." % MAX_TOKENS,
                 consumo=consumo,
+                texto=texto,
             )
         try:
-            entrega = parsear_entrega(_texto_de(respuesta))
+            entrega = parsear_entrega(texto)
         except EntregaNoParseable as error:
-            raise RespuestaIlegible("no_parseable", str(error), consumo=consumo)
+            raise RespuestaIlegible(
+                "no_parseable", str(error), consumo=consumo, texto=texto
+            )
 
         if es_entrega_vacia(entrega):
             # El contrato la declara válida y dispara escalamiento. No es un

@@ -36,13 +36,21 @@ Acá eso se resuelve en un solo lugar: `entrega_del_evento` devuelve siempre una
 entrega con contenido, lo tuviera el evento o haya que ir a buscarlo al
 depósito. Aguas abajo nadie sabe de qué forma vino, que es la única manera de
 que las dos convivan sin ensuciar cada consumidor.
+
+## Lo que no se pudo leer también se deposita
+
+`depositar_ilegible` guarda el texto de una respuesta ilegible bajo el mismo
+razonamiento y con la misma mecánica: referencia y hash en el evento, contenido
+en disco. Es el área tercera, y el porqué de que sea tercera está en
+`raiz_ilegibles`.
 """
 
 import hashlib
 from pathlib import Path
 
 import espacio
-from operational_state import absoluta_desde
+import operational_state
+from operational_state import absoluta_desde, relativa_a
 
 
 class RutaFueraDelDirectorio(RuntimeError):
@@ -209,3 +217,66 @@ def entrega_del_evento(payload, base):
     if all("contenido" in archivo for archivo in archivos):
         return entrega
     return rehidratar(entrega, absoluta_desde(payload["deposito"], base))
+
+
+# --- lo que no se pudo leer -------------------------------------------------
+
+
+def raiz_ilegibles():
+    """El área de respuestas ilegibles, tercera hermana bajo el estado.
+
+    Es tercera y no un rincón de `entregas/` por una razón concreta: el depósito
+    de una iteración es una **copia ejecutable** del espacio de trabajo —lo arma
+    `depositar` con `base` y lo corre QA adentro—. Un archivo con la respuesta
+    fallada del modelo ahí adentro aparecería en el inventario del espacio, en el
+    contexto de la parte siguiente y en el árbol que la verificación sustantiva
+    copia y ejecuta. Evidencia de un fallo no es material de trabajo.
+
+    Y es un área y no el payload del evento por ADR-017: el registro tiene que
+    crecer con la cantidad de hechos y no con el tamaño de lo que el modelo
+    escribió. Una respuesta truncada contra un techo de 8.000 tokens son unos
+    30 KB; el registro entero, medido el 2026-08-30, son 120.339 bytes en 288
+    eventos. Un solo evento pasaría a ser el cuarto del registro, y el criterio
+    de qué se guarda dejaría de depender de qué pasó para depender de cuánto
+    escribió el modelo antes de cortarse. Es exactamente la ley de crecimiento
+    que ADR-017 vino a romper.
+    """
+    return operational_state.DIR_ESTADO / "ilegibles"
+
+
+def depositar_ilegible(run_id, etapa, iteracion, texto):
+    """Guarda una respuesta que no se pudo leer y devuelve cómo referenciarla.
+
+    Devuelve los campos que el evento `respuesta_ilegible` agrega —`ruta`,
+    `sha256` y `bytes`— o un diccionario vacío si no hay texto que guardar, para
+    que quien llama pueda hacer `payload.update(...)` sin preguntar.
+
+    **Se escribe, se relee contra el hash y recién después el que llama appendea
+    el evento.** Es el mismo orden y la misma razón que `depositar`: el corte
+    deja archivo sin evento —basura inerte que nadie reclama— y nunca evento sin
+    archivo, que sería el registro exhibiendo el hash de algo que no existe y no
+    se puede desdecir, porque por ADR-011 punto 3 un evento no se modifica.
+
+    Un archivo por invocación: `<run_id>/<iteracion>-<etapa>.txt`. Dentro de una
+    corrida hay una sola llamada por iteración y etapa, así que el nombre es
+    único sin necesidad de inventar identificadores. `.txt` y no `.json` porque
+    justamente no es JSON válido: es lo que se escribió antes de cortarse.
+    """
+    if not texto:
+        return {}
+    destino = raiz_ilegibles() / run_id
+    destino.mkdir(parents=True, exist_ok=True)
+    archivo = destino / ("%s-%s.txt" % (iteracion, etapa))
+    archivo.write_text(texto, encoding="utf-8")
+    esperado = sha256_de(texto)
+    escrito = sha256_de(archivo.read_text(encoding="utf-8"))
+    if escrito != esperado:
+        raise DepositoAlterado(
+            "la respuesta ilegible quedó en '%s' con hash %s y se escribió %s."
+            % (archivo, escrito, esperado)
+        )
+    return {
+        "ruta": relativa_a(archivo, operational_state.DIR_ESTADO),
+        "sha256": esperado,
+        "bytes": len(texto.encode("utf-8")),
+    }

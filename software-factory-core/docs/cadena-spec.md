@@ -345,7 +345,7 @@ cambiaría en silencio quién ejecutó las unidades.
 
 ## Criterio de aceptación
 
-`tests/test_cadena.py`, 71 tests contra un Operational State, un
+`tests/test_cadena.py`, 77 tests contra un Operational State, un
 checkpointer y un directorio de trabajo temporales.
 
 | Cubre | Qué comprueba |
@@ -360,6 +360,7 @@ checkpointer y un directorio de trabajo temporales.
 | Directorio | Un subdirectorio por unidad; se borra recién tras el Gate aprobado; no se borra si escaló; una ruta que escapa no se escribe |
 | Idempotencia | Reentrar no relanza ni repaga lo entregado, y reusa el directorio |
 | Depósito de artefactos | El evento lleva hash y no contenido; la entrega se reconstruye desde el área; cada iteración deposita la suya, también la rechazada; un evento viejo con contenido se sigue leyendo; el hash detecta una alteración; falta un archivo y la cadena levanta en vez de armar un prompt incompleto; el corte deja archivos sin evento y el reintento los sobrescribe |
+| Respuesta ilegible depositada | El texto que el modelo alcanzó a escribir queda en `ilegibles/<run>/<iteracion>-<etapa>.txt`; el evento lo referencia por ruta relativa, hash y bytes, y no lo contiene; no cae adentro del depósito que QA ejecuta; vale para las tres etapas —plan, entrega y QA—; sin texto el evento sale como antes y no se inventa un archivo vacío |
 | Enganche de QA — ADR-018 | Corre una vez por unidad, después del verificador estructural y antes del Gate de salida; recibe el depósito que registró ADR-017; el productor y la definición van juntos o no van; el incumplimiento sustantivo entra al mismo bucle de corrección que el estructural y lo acota el techo del Developer; sin frontera escala en vez de aprobar; la métrica de criterios no verificables llega al Gate, y sin QA es `None` y no cero |
 
 `tests/test_herencia.py` cubre heredar un plan verificado: que ejecute sin
